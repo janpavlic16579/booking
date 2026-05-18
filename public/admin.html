@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Skrbniški del — Stiliranje nohtov</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site">
+    <h1>Skrbniški del</h1>
+    <p>Upravljanje storitev, terminov in rezervacij</p>
+    <a class="nav-link" href="/">Nazaj na rezervacije</a>
+  </header>
+
+  <main class="container">
+
+    <!-- Prijava -->
+    <div class="card" id="loginCard">
+      <h2>Prijava</h2>
+      <form id="loginForm">
+        <label for="password">Geslo</label>
+        <input id="password" type="password" required autocomplete="current-password" />
+        <div id="loginMsg"></div>
+        <div style="margin-top:14px;">
+          <button type="submit">Prijava</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Nadzorna plošča -->
+    <div id="dashboard" class="hidden">
+      <div class="tabs">
+        <button class="tab active" data-tab="slots">Termini</button>
+        <button class="tab" data-tab="services">Storitve</button>
+        <button class="tab" data-tab="bookings">Rezervacije</button>
+        <button class="tab" id="logoutBtn" style="margin-left:auto;background:#fff;color:var(--err);border-color:#f0c9c4;">Odjava</button>
+      </div>
+
+      <!-- Termini -->
+      <section id="tab-slots">
+        <div class="card">
+          <h2>Odpri nove proste termine</h2>
+          <form id="slotForm">
+            <div class="row">
+              <div>
+                <label for="slotService">Storitev</label>
+                <select id="slotService" required></select>
+              </div>
+              <div>
+                <label for="slotDate">Datum</label>
+                <input id="slotDate" type="date" required />
+              </div>
+            </div>
+
+            <label>Ure (klikni za dodajanje; izbrane bodo odprte kot termini)</label>
+            <div class="row">
+              <input id="slotTime" type="time" />
+              <button type="button" class="secondary" id="addTimeBtn" style="flex:0 0 auto;">Dodaj uro</button>
+            </div>
+            <div id="timeChips" class="row" style="margin-top:10px;"></div>
+
+            <div id="slotMsg"></div>
+            <div style="margin-top:14px;">
+              <button type="submit">Odpri termine</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Vsi termini</h2>
+          <div class="table-wrap">
+            <table id="slotsTable">
+              <thead>
+                <tr><th>Datum</th><th>Ura</th><th>Storitev</th><th>Cena</th><th>Status</th><th>Stranka</th><th></th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Storitve -->
+      <section id="tab-services" class="hidden">
+        <div class="card">
+          <h2>Dodaj storitev</h2>
+          <form id="serviceForm">
+            <div class="row">
+              <div>
+                <label for="svcName">Ime</label>
+                <input id="svcName" type="text" maxlength="120" required />
+              </div>
+              <div>
+                <label for="svcDuration">Trajanje (min)</label>
+                <input id="svcDuration" type="number" min="1" max="600" required />
+              </div>
+              <div>
+                <label for="svcPrice">Cena (€)</label>
+                <input id="svcPrice" type="number" min="0" step="0.01" required />
+              </div>
+            </div>
+            <div id="serviceMsg"></div>
+            <div style="margin-top:14px;">
+              <button type="submit">Dodaj</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Storitve</h2>
+          <div class="table-wrap">
+            <table id="servicesTable">
+              <thead>
+                <tr><th>Ime</th><th>Trajanje</th><th>Cena</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Rezervacije -->
+      <section id="tab-bookings" class="hidden">
+        <div class="card">
+          <h2>Rezervacije</h2>
+          <div class="table-wrap">
+            <table id="bookingsTable">
+              <thead>
+                <tr><th>Datum</th><th>Ura</th><th>Storitev</th><th>Stranka</th><th>Telefon</th><th>E-pošta</th><th>Opomba</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>Skrbniški del · Stiliranje nohtov</footer>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

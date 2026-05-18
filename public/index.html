@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stiliranje nohtov — spletna rezervacija</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site">
+    <h1>Stiliranje nohtov</h1>
+    <p>Izberite prosti termin in se rezervirajte v nekaj klikih</p>
+    <a class="nav-link" href="/admin">Skrbniški dostop</a>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <h2>1. Izberite storitev</h2>
+      <select id="serviceFilter">
+        <option value="">Vse storitve</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <h2>2. Izberite prosti termin</h2>
+      <div id="slotsContainer">
+        <p class="muted">Nalaganje terminov…</p>
+      </div>
+    </div>
+
+    <div class="card hidden" id="bookingCard">
+      <h2>3. Vaši podatki</h2>
+      <p class="muted" id="selectedSummary"></p>
+
+      <form id="bookingForm">
+        <label for="name">Ime in priimek *</label>
+        <input id="name" name="name" type="text" maxlength="120" required autocomplete="name" />
+
+        <div class="row">
+          <div>
+            <label for="phone">Telefon *</label>
+            <input id="phone" name="phone" type="tel" maxlength="40" required autocomplete="tel" />
+          </div>
+          <div>
+            <label for="email">E-pošta *</label>
+            <input id="email" name="email" type="email" maxlength="254" required autocomplete="email" />
+          </div>
+        </div>
+
+        <label for="note">Opomba (neobvezno)</label>
+        <textarea id="note" name="note" maxlength="500" placeholder="Npr. želje glede dizajna…"></textarea>
+
+        <div id="formMsg"></div>
+
+        <div class="row" style="margin-top:14px;">
+          <button type="submit" id="submitBtn">Potrdi rezervacijo</button>
+          <button type="button" class="secondary" id="cancelBtn">Prekliči izbiro</button>
+        </div>
+      </form>
+    </div>
+  </main>
+
+  <footer>Stiliranje nohtov · spletna rezervacija</footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
