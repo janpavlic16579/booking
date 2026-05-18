@@ -102,7 +102,7 @@ Frontend kliče API prek `window.API_BASE` (CORS je na zaledju že urejen).
 - Objavi prek `render.yaml` (glej zgoraj). Dobiš npr.
   `https://booking-nohti.onrender.com`.
 - Na Render dodaj okoljsko spremenljivko:
-  `ALLOWED_ORIGINS=https://tvoja-domena.si,https://www.tvoja-domena.si`
+  `ALLOWED_ORIGINS=https://mia-booking.si,https://www.mia-booking.si`
 
 **2. Frontend → kam naj kliče API**
 
@@ -117,18 +117,19 @@ Frontend kliče API prek `window.API_BASE` (CORS je na zaledju že urejen).
 - Repo mora biti **javen** (brezplačen Pages) ali imeti GitHub Pro.
 - Workflow objavi vsebino mape `public/` ob vsakem pushu na vejo.
 
-**4. Lastna domena**
+**4. Lastna domena (mia-booking.si)**
 
-- Preimenuj `public/CNAME.example` → `public/CNAME` in vpiši svojo domeno
-  (npr. `www.tvoja-domena.si`), commitaj. (Lahko tudi samo:
-  Settings → Pages → Custom domain.)
+- Domena je v **`public/CNAME`** (`mia-booking.si`). Pri objavi prek GitHub
+  Actions mora biti CNAME znotraj objavljene mape `public/` — datoteka
+  `CNAME` v korenu repozitorija se pri Actions objavi **ne** uporabi.
+  (Lahko jo nastaviš tudi v Settings → Pages → Custom domain.)
 - **DNS pri domenca.com:**
-  - apex `tvoja-domena.si` — štirje **A** zapisi:
+  - apex `mia-booking.si` — štirje **A** zapisi:
     `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
-  - `www` — **CNAME** → `janpavlic16579.github.io`
+  - (neobvezno) `www` — **CNAME** → `janpavlic16579.github.io`
 - Ko DNS propagira (lahko nekaj ur), v Settings → Pages vključi
   **Enforce HTTPS**.
 
-Rezultat: stran na `https://tvoja-domena.si`, klici na
-`https://booking-nohti.onrender.com`. Brez CORS napak, ker je `ALLOWED_ORIGINS`
+Rezultat: stran na `https://mia-booking.si`, klici na
+`https://<ime>.onrender.com`. Brez CORS napak, ker je `ALLOWED_ORIGINS`
 na Render nastavljen na tvojo domeno.
