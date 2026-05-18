@@ -23,9 +23,8 @@ html { -webkit-text-size-adjust: 100%; }
 body {
   font-family: "Poppins", "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
   background:
-    radial-gradient(60rem 40rem at 12% -8%, #ffe6ee 0%, transparent 60%),
-    radial-gradient(50rem 36rem at 100% 0%, #fdeede 0%, transparent 55%),
-    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+    linear-gradient(180deg, rgba(255, 246, 244, 0.55) 0%, rgba(251, 234, 240, 0.65) 100%),
+    url("ozadje2.avif") center center / cover no-repeat;
   background-attachment: fixed;
   color: var(--text);
   line-height: 1.6;
