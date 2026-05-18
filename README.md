@@ -10,7 +10,7 @@ frontend je čist HTML/CSS/JS.
 
 ## Zahteve
 
-- Node.js **22.5.0 ali novejši** (uporablja vgrajeni modul `node:sqlite`).
+- Node.js **22.13.0 ali novejši** (uporablja vgrajeni modul `node:sqlite`).
 
 ## Namestitev in zagon
 
@@ -65,3 +65,28 @@ npm test
 
 Zažene smoke test, ki preveri celoten tok (prijava, storitev, termin,
 rezervacija, preprečitev dvojne rezervacije, zaščita admin poti).
+
+## Objava na splet (Render)
+
+Repo vsebuje `render.yaml`, zato je objava preprosta:
+
+1. Ustvari račun na <https://render.com> in poveži svoj GitHub.
+2. **New > Web Service** (ali **Blueprint**) → izberi repo `janpavlic16579/booking`
+   in vejo `claude/review-booking-repo-834MU`.
+3. Render samodejno zazna nastavitve (Node, `npm install`, `npm start`,
+   health check `/health`).
+4. Med ustvarjanjem vnesi okoljsko spremenljivko **`ADMIN_PASSWORD`**
+   (tvoje skrbniško geslo).
+5. Klikni **Create** — po nekaj minutah dobiš javni URL
+   (npr. `https://booking-nohti.onrender.com`).
+   - Stranke: `/`
+   - Admin: `/admin`
+
+### Trajnost podatkov
+
+Brezplačni Render načrt ima **začasen disk** — baza (rezervacije) se izbriše
+ob vsakem ponovnem zagonu/objavi/mirovanju. Primerno za ogled in testiranje.
+
+Za **prave rezervacije strank** uporabi trajni disk (v `render.yaml` so
+zakomentirana navodila): nastavi `plan: starter`, odkomentiraj sekcijo `disk`
+in spremenljivko `DB_PATH=/var/data/booking.db`.

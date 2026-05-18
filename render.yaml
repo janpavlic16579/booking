@@ -1,0 +1,37 @@
+# Render Blueprint za objavo aplikacije.
+# Render: New > Blueprint > izberi repo in vejo. Render prebere to datoteko.
+#
+# OPOMBA O TRAJNOSTI PODATKOV:
+#   Brezplačni načrt (plan: free) ima ZAČASEN disk — baza (rezervacije) se
+#   IZBRIŠE ob vsakem ponovnem zagonu/objavi/mirovanju. Odlično za ogled in
+#   testiranje, NE za prave rezervacije strank.
+#
+#   Za trajne podatke uporabi plačljiv načrt in disk (glej zakomentirane vrstice):
+#     1) plan: starter
+#     2) odkomentiraj sekcijo "disk"
+#     3) DB_PATH nastavi na /var/data/booking.db
+
+services:
+  - type: web
+    name: booking-nohti
+    runtime: node
+    plan: free
+    branch: claude/review-booking-repo-834MU
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false          # Render te ob objavi prosi, da vneseš geslo
+      - key: NODE_VERSION
+        value: "22"
+      # Za trajne podatke (s plačljivim diskom) odkomentiraj:
+      # - key: DB_PATH
+      #   value: /var/data/booking.db
+
+    # Za trajne podatke odkomentiraj (zahteva plan: starter ali višje):
+    # disk:
+    #   name: data
+    #   mountPath: /var/data
+    #   sizeGB: 1
