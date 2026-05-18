@@ -6,4 +6,7 @@
 //       window.API_BASE = "https://booking-nohti.onrender.com";
 //
 // POMEMBNO: brez poševnice na koncu.
-window.API_BASE = "https://booking-nohti.onrender.com";
+//
+// Render streže frontend in /api z istega strežnika, zato pustimo prazno
+// (relativni klici na isti origin). Tako ni težav s CORS / "Failed to fetch".
+window.API_BASE = "";
