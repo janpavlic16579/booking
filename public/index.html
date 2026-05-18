@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Stiliranje nohtov — spletna rezervacija</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Poppins:wght@300;400;500;600;700&display=swap" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -15,21 +18,21 @@
 
   <main class="container">
     <div class="card">
-      <h2>1. Izberite storitev</h2>
+      <h2><span class="step-num">1</span> Izberite storitev</h2>
       <select id="serviceFilter">
         <option value="">Vse storitve</option>
       </select>
     </div>
 
     <div class="card">
-      <h2>2. Izberite prosti termin</h2>
+      <h2><span class="step-num">2</span> Izberite prosti termin</h2>
       <div id="slotsContainer">
         <p class="muted">Nalaganje terminov…</p>
       </div>
     </div>
 
     <div class="card hidden" id="bookingCard">
-      <h2>3. Vaši podatki</h2>
+      <h2><span class="step-num">3</span> Vaši podatki</h2>
       <p class="muted" id="selectedSummary"></p>
 
       <form id="bookingForm">
