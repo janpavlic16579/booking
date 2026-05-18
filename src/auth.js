@@ -2,13 +2,13 @@
 
 const crypto = require('node:crypto');
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Marjetka123';
 const SESSION_TTL_MS =
   (Number(process.env.SESSION_TTL_HOURS) || 12) * 60 * 60 * 1000;
 
-if (ADMIN_PASSWORD === 'admin') {
+if (ADMIN_PASSWORD === 'Marjetka123') {
   console.warn(
-    '[OPOZORILO] Uporabljeno privzeto admin geslo "admin". ' +
+    '[OPOZORILO] Uporabljeno privzeto admin geslo "Marjetka123". ' +
       'Nastavi ADMIN_PASSWORD v .env za produkcijo.'
   );
 }
