@@ -30,7 +30,7 @@ Strežnik privzeto teče na <http://localhost:3000>.
 | Spremenljivka       | Privzeto             | Opis                                  |
 | ------------------- | -------------------- | ------------------------------------- |
 | `PORT`              | `3000`               | Vrata strežnika.                      |
-| `ADMIN_PASSWORD`    | `admin`              | Geslo za skrbniško prijavo.           |
+| `ADMIN_PASSWORD`    | `Marjetka123`        | Geslo za skrbniško prijavo.           |
 | `DB_PATH`           | `./data/booking.db`  | Pot do SQLite baze.                   |
 | `SESSION_TTL_HOURS` | `12`                 | Trajanje skrbniške seje (ure).        |
 
