@@ -6,4 +6,4 @@
 //       window.API_BASE = "https://booking-nohti.onrender.com";
 //
 // POMEMBNO: brez poševnice na koncu.
-window.API_BASE = "";
+window.API_BASE = "https://booking-nohti.onrender.com";
