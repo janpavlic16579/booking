@@ -8,6 +8,12 @@ const state = {
 
 const el = (id) => document.getElementById(id);
 
+// Zaledni API je lahko na drugem originu (npr. Render), ko frontend teče
+// na GitHub Pages. window.API_BASE nastaviš v config.js.
+function apiUrl(p) {
+  return (window.API_BASE || '') + p;
+}
+
 const dateFmt = new Intl.DateTimeFormat('sl-SI', {
   weekday: 'long',
   day: 'numeric',
@@ -33,7 +39,7 @@ function showMsg(container, text, kind) {
 }
 
 async function api(path, options) {
-  const res = await fetch(path, options);
+  const res = await fetch(apiUrl(path), options);
   let data = null;
   try {
     data = await res.json();

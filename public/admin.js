@@ -3,6 +3,12 @@
 const el = (id) => document.getElementById(id);
 const TOKEN_KEY = 'booking_admin_token';
 
+// Zaledni API je lahko na drugem originu (npr. Render), ko admin frontend
+// teče na GitHub Pages. window.API_BASE nastaviš v config.js.
+function apiUrl(p) {
+  return (window.API_BASE || '') + p;
+}
+
 const state = {
   token: localStorage.getItem(TOKEN_KEY) || null,
   services: [],
@@ -33,7 +39,7 @@ function showMsg(container, text, kind) {
 async function api(path, options = {}) {
   const opts = { ...options, headers: { ...(options.headers || {}) } };
   if (state.token) opts.headers.Authorization = 'Bearer ' + state.token;
-  const res = await fetch(path, opts);
+  const res = await fetch(apiUrl(path), opts);
   let data = null;
   try {
     data = await res.json();
@@ -55,7 +61,7 @@ async function api(path, options = {}) {
 async function doLogin(e) {
   e.preventDefault();
   try {
-    const out = await fetch('/api/admin/login', {
+    const out = await fetch(apiUrl('/api/admin/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: el('password').value }),

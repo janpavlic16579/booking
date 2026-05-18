@@ -90,3 +90,45 @@ ob vsakem ponovnem zagonu/objavi/mirovanju. Primerno za ogled in testiranje.
 Za **prave rezervacije strank** uporabi trajni disk (v `render.yaml` so
 zakomentirana navodila): nastavi `plan: starter`, odkomentiraj sekcijo `disk`
 in spremenljivko `DB_PATH=/var/data/booking.db`.
+
+## GitHub Pages (lastna domena) + ločen API na Render
+
+GitHub Pages streže samo statične datoteke, zato gre tja **samo frontend**
+(mapa `public/`), zaledni API (Express + baza) pa teče ločeno na Render.
+Frontend kliče API prek `window.API_BASE` (CORS je na zaledju že urejen).
+
+**1. Zaledje (API) na Render**
+
+- Objavi prek `render.yaml` (glej zgoraj). Dobiš npr.
+  `https://booking-nohti.onrender.com`.
+- Na Render dodaj okoljsko spremenljivko:
+  `ALLOWED_ORIGINS=https://tvoja-domena.si,https://www.tvoja-domena.si`
+
+**2. Frontend → kam naj kliče API**
+
+- V `public/config.js` nastavi:
+  `window.API_BASE = "https://booking-nohti.onrender.com";` (brez `/` na koncu).
+- Commitaj in pushaj na vejo `claude/review-booking-repo-834MU`
+  (sproži se workflow `.github/workflows/pages.yml`).
+
+**3. Vklop GitHub Pages**
+
+- Repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+- Repo mora biti **javen** (brezplačen Pages) ali imeti GitHub Pro.
+- Workflow objavi vsebino mape `public/` ob vsakem pushu na vejo.
+
+**4. Lastna domena**
+
+- Preimenuj `public/CNAME.example` → `public/CNAME` in vpiši svojo domeno
+  (npr. `www.tvoja-domena.si`), commitaj. (Lahko tudi samo:
+  Settings → Pages → Custom domain.)
+- **DNS pri domenca.com:**
+  - apex `tvoja-domena.si` — štirje **A** zapisi:
+    `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
+  - `www` — **CNAME** → `janpavlic16579.github.io`
+- Ko DNS propagira (lahko nekaj ur), v Settings → Pages vključi
+  **Enforce HTTPS**.
+
+Rezultat: stran na `https://tvoja-domena.si`, klici na
+`https://booking-nohti.onrender.com`. Brez CORS napak, ker je `ALLOWED_ORIGINS`
+na Render nastavljen na tvojo domeno.

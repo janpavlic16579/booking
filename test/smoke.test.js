@@ -11,10 +11,13 @@ const TMP_DB = path.join(
   `booking-test-${process.pid}-${Date.now()}.db`
 );
 
+const ALLOWED_ORIGIN = 'https://nohti.example';
+
 process.env.PORT = '0';
 process.env.ADMIN_PASSWORD = 'testpass';
 process.env.DB_PATH = TMP_DB;
 process.env.SESSION_TTL_HOURS = '1';
+process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
 
 const { server } = require('../server');
 
@@ -218,4 +221,46 @@ test('rezerviranega termina ni mogoče izbrisati', async () => {
     headers: authHeaders(),
   });
   assert.equal(r.status, 409);
+});
+
+/* ---------- CORS (frontend na drugem originu) ---------- */
+
+test('CORS: preflight OPTIONS vrne 204 z dovoljenimi glavami', async () => {
+  const res = await fetch(base + '/api/bookings', {
+    method: 'OPTIONS',
+    headers: {
+      Origin: ALLOWED_ORIGIN,
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'content-type,authorization',
+    },
+  });
+  assert.equal(res.status, 204);
+  assert.equal(res.headers.get('access-control-allow-origin'), ALLOWED_ORIGIN);
+  const methods = res.headers.get('access-control-allow-methods') || '';
+  assert.match(methods, /POST/);
+  assert.match(methods, /OPTIONS/);
+  const allowHeaders = (
+    res.headers.get('access-control-allow-headers') || ''
+  ).toLowerCase();
+  assert.match(allowHeaders, /authorization/);
+  assert.match(allowHeaders, /content-type/);
+});
+
+test('CORS: dovoljen origin dobi Access-Control-Allow-Origin', async () => {
+  const res = await fetch(base + '/api/services', {
+    headers: { Origin: ALLOWED_ORIGIN },
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('access-control-allow-origin'), ALLOWED_ORIGIN);
+});
+
+test('CORS: nedovoljen origin ne dobi dovoljenja zanj', async () => {
+  const res = await fetch(base + '/api/services', {
+    headers: { Origin: 'https://zlonamerni.example' },
+  });
+  assert.equal(res.status, 200); // javni API še vedno deluje
+  assert.notEqual(
+    res.headers.get('access-control-allow-origin'),
+    'https://zlonamerni.example'
+  );
 });
