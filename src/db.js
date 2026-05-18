@@ -55,9 +55,14 @@ if (serviceCount === 0) {
   const insert = db.prepare(
     'INSERT INTO services (name, duration_min, price_eur) VALUES (?, ?, ?)'
   );
-  insert.run('Manikira', 45, 20);
-  insert.run('Gel lak', 60, 30);
-  insert.run('Podaljševanje nohtov', 120, 50);
+  insert.run('BIAB', 90, 30);
+  insert.run('Francoska manikura / Baby boomer', 90, 30);
+  insert.run('BIAB + barva', 90, 30);
+  insert.run('Nega naravnih nohtov', 30, 30);
+  insert.run('Nega naravnih nohtov z lakiranjem', 60, 30);
+  insert.run('Podaljševanje nohtov', 120, 30);
+  insert.run('Urejanje nohtov na nogah / lakiranje', 120, 30);
+  insert.run('BIAB + poslikava / dizajn', 105, 30);
 }
 
 /** Doda trajanje (minute) uri "HH:MM" in vrne "HH:MM" (omejeno na isti dan). */

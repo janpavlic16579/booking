@@ -200,7 +200,51 @@ async function submitBooking(e) {
   }
 }
 
+function updateServiceInfo() {
+  const toggle = el('svcInfoToggle');
+  const panel = el('svcInfo');
+
+  panel.classList.add('hidden');
+  panel.innerHTML = '';
+  toggle.classList.add('hidden');
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.textContent = 'Več informacij';
+
+  const filter = el('serviceFilter').value;
+  if (!filter) return;
+
+  const svc = state.services.find((s) => String(s.id) === filter);
+  const info = svc && window.SERVICE_INFO ? window.SERVICE_INFO[svc.name] : null;
+  if (!info) return;
+
+  const desc = document.createElement('p');
+  desc.className = 'svc-info-desc';
+  desc.textContent = info.description;
+  panel.appendChild(desc);
+
+  for (const [icon, text] of [['⏳', info.duration], ['📅', info.refresh]]) {
+    if (!text) continue;
+    const line = document.createElement('p');
+    line.className = 'svc-info-meta';
+    line.textContent = `${icon} ${text}`;
+    panel.appendChild(line);
+  }
+
+  toggle.classList.remove('hidden');
+}
+
+function toggleServiceInfo() {
+  const toggle = el('svcInfoToggle');
+  const panel = el('svcInfo');
+  const willShow = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !willShow);
+  toggle.setAttribute('aria-expanded', String(willShow));
+  toggle.textContent = willShow ? 'Manj informacij' : 'Več informacij';
+}
+
 el('serviceFilter').addEventListener('change', renderSlots);
+el('serviceFilter').addEventListener('change', updateServiceInfo);
+el('svcInfoToggle').addEventListener('click', toggleServiceInfo);
 el('bookingForm').addEventListener('submit', submitBooking);
 el('cancelBtn').addEventListener('click', cancelSelection);
 
@@ -210,5 +254,6 @@ el('cancelBtn').addEventListener('click', cancelSelection);
   } catch {
     /* storitve niso ključne za prikaz */
   }
+  updateServiceInfo();
   await loadSlots();
 })();
