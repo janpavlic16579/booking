@@ -31,7 +31,10 @@ html { -webkit-text-size-adjust: 100%; }
 
 body {
   font-family: var(--sans);
-  background: var(--page);
+  background:
+    linear-gradient(180deg, rgba(241, 235, 228, 0.62) 0%, rgba(241, 235, 228, 0.72) 100%),
+    url("ozadje2.avif") center center / cover no-repeat fixed;
+  background-color: var(--page);
   color: var(--ink);
   line-height: 1.65;
   min-height: 100vh;
