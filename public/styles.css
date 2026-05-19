@@ -33,7 +33,7 @@ body {
   font-family: var(--sans);
   background:
     linear-gradient(180deg, rgba(241, 235, 228, 0.62) 0%, rgba(241, 235, 228, 0.72) 100%),
-    url("ozadje1.avif") center center / cover no-repeat fixed;
+    url("ozadje.png") center center / cover no-repeat fixed;
   background-color: var(--page);
   color: var(--ink);
   line-height: 1.65;
@@ -83,7 +83,7 @@ header.site {
   padding: 70px 22px 84px;
   background:
     linear-gradient(180deg, rgba(57, 52, 46, 0.34) 0%, rgba(57, 52, 46, 0.46) 100%),
-    url("ozadje1.avif") center center / cover no-repeat;
+    url("ozadje.png") center center / cover no-repeat;
   color: #fff;
 }
 header.site h1 {
