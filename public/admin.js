@@ -12,7 +12,8 @@ function apiUrl(p) {
 const state = {
   token: localStorage.getItem(TOKEN_KEY) || null,
   services: [],
-  pendingTimes: [],
+  editingId: null,
+  calendar: null,
 };
 
 const dateFmt = new Intl.DateTimeFormat('sl-SI', {
@@ -87,7 +88,8 @@ function logout() {
 async function enterDashboard() {
   el('loginCard').classList.add('hidden');
   el('dashboard').classList.remove('hidden');
-  await Promise.all([loadServices(), loadSlots(), loadBookings()]);
+  await Promise.all([loadServices(), loadBookings()]);
+  initCalendar();
 }
 
 /* ---------- Zavihki ---------- */
@@ -103,8 +105,120 @@ function setupTabs() {
       for (const name of ['slots', 'services', 'bookings']) {
         el('tab-' + name).classList.toggle('hidden', name !== tab);
       }
+      // Koledar se mora prerisati, ko postane viden.
+      if (tab === 'slots' && state.calendar) {
+        state.calendar.updateSize();
+        state.calendar.refetchEvents();
+      }
     });
   });
+}
+
+/* ---------- Koledar ---------- */
+
+function initCalendar() {
+  if (state.calendar) {
+    state.calendar.refetchEvents();
+    return;
+  }
+  if (!window.FullCalendar) {
+    el('calFallback').classList.remove('hidden');
+    return;
+  }
+  state.calendar = new FullCalendar.Calendar(el('calendar'), {
+    initialView: 'timeGridWeek',
+    locale: 'sl',
+    firstDay: 1,
+    allDaySlot: false,
+    slotMinTime: '07:00:00',
+    slotMaxTime: '21:00:00',
+    nowIndicator: true,
+    height: 'auto',
+    selectable: true,
+    selectMirror: true,
+    headerToolbar: {
+      left: 'prev,next today',
+      center: 'title',
+      right: 'timeGridWeek,timeGridDay',
+    },
+    select: onSelectCreate,
+    eventClick: onEventClick,
+    events: fetchFeed,
+  });
+  state.calendar.render();
+}
+
+async function fetchFeed(info, success, failure) {
+  try {
+    const from = info.startStr.slice(0, 10);
+    const to = info.endStr.slice(0, 10);
+    const data = await api(`/api/admin/calendar?from=${from}&to=${to}`);
+    const events = [];
+    for (const a of data.availability) {
+      events.push({
+        id: 'a' + a.id,
+        title: 'Prosto',
+        start: a.date + 'T' + a.start_time,
+        end: a.date + 'T' + a.end_time,
+        backgroundColor: '#5e7355',
+        borderColor: '#4f6147',
+        extendedProps: { kind: 'availability', realId: a.id },
+      });
+    }
+    for (const b of data.bookings) {
+      events.push({
+        id: 'b' + b.id,
+        title: `${b.service_name} — ${b.customer_name}`,
+        start: b.date + 'T' + b.start_time,
+        end: b.date + 'T' + b.end_time,
+        backgroundColor: '#a8998b',
+        borderColor: '#8c7d6f',
+        editable: false,
+        extendedProps: { kind: 'booking', phone: b.customer_phone },
+      });
+    }
+    success(events);
+  } catch (err) {
+    showMsg(el('calMsg'), err.message, 'err');
+    failure(err);
+  }
+}
+
+async function onSelectCreate(sel) {
+  const date = sel.startStr.slice(0, 10);
+  const start_time = sel.startStr.slice(11, 16);
+  let end_time = sel.endStr.slice(11, 16);
+  if (sel.endStr.slice(0, 10) !== date) end_time = '23:59';
+  try {
+    await api('/api/admin/availability', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, start_time, end_time }),
+    });
+    showMsg(el('calMsg'), 'Delovno okno dodano.', 'ok');
+  } catch (err) {
+    showMsg(el('calMsg'), err.message, 'err');
+  } finally {
+    state.calendar.unselect();
+    state.calendar.refetchEvents();
+  }
+}
+
+async function onEventClick(info) {
+  const p = info.event.extendedProps;
+  if (p.kind === 'availability') {
+    if (!confirm('Izbrisati to delovno okno?')) return;
+    try {
+      await api('/api/admin/availability/' + p.realId, { method: 'DELETE' });
+      showMsg(el('calMsg'), 'Okno izbrisano.', 'ok');
+    } catch (err) {
+      showMsg(el('calMsg'), err.message, 'err');
+    } finally {
+      state.calendar.refetchEvents();
+    }
+  } else if (p.kind === 'booking') {
+    alert(`${info.event.title}\nTelefon: ${p.phone || '—'}`);
+  }
 }
 
 /* ---------- Storitve ---------- */
@@ -112,20 +226,24 @@ function setupTabs() {
 async function loadServices() {
   state.services = await api('/api/admin/services');
 
-  const sel = el('slotService');
-  sel.innerHTML = '';
-  for (const s of state.services.filter((x) => x.active)) {
-    const opt = document.createElement('option');
-    opt.value = String(s.id);
-    opt.textContent = `${s.name} (${s.duration_min} min, ${eur(s.price_eur)})`;
-    sel.appendChild(opt);
-  }
-
   const tbody = el('servicesTable').querySelector('tbody');
   tbody.innerHTML = '';
   for (const s of state.services) {
     const tr = document.createElement('tr');
+
+    const imgCell = document.createElement('td');
+    if (s.image) {
+      const img = document.createElement('img');
+      img.src = s.image;
+      img.alt = s.name;
+      img.className = 'svc-thumb';
+      imgCell.appendChild(img);
+    } else {
+      imgCell.textContent = '—';
+    }
+
     tr.append(
+      imgCell,
       td(s.name),
       td(s.duration_min + ' min'),
       td(eur(s.price_eur)),
@@ -133,6 +251,7 @@ async function loadServices() {
     );
 
     const actions = document.createElement('td');
+    const edit = mkBtn('Uredi', 'secondary small', () => startEdit(s));
     const toggle = mkBtn(
       s.active ? 'Deaktiviraj' : 'Aktiviraj',
       'secondary small',
@@ -143,147 +262,96 @@ async function loadServices() {
           body: JSON.stringify({ active: s.active ? 0 : 1 }),
         });
         await loadServices();
+        if (state.calendar) state.calendar.refetchEvents();
       }
     );
     const del = mkBtn('Izbriši', 'danger small', async () => {
       if (!confirm(`Izbrisati storitev "${s.name}"?`)) return;
       await api('/api/admin/services/' + s.id, { method: 'DELETE' });
+      if (state.editingId === s.id) clearEdit();
       await loadServices();
-      await loadSlots();
+      if (state.calendar) state.calendar.refetchEvents();
     });
-    actions.append(toggle, document.createTextNode(' '), del);
+    actions.append(
+      edit,
+      document.createTextNode(' '),
+      toggle,
+      document.createTextNode(' '),
+      del
+    );
     tr.appendChild(actions);
     tbody.appendChild(tr);
   }
 }
 
-async function addService(e) {
+function updateImagePreview() {
+  const url = el('svcImage').value.trim();
+  const prev = el('svcImagePreview');
+  if (url) {
+    prev.src = url;
+    prev.classList.remove('hidden');
+  } else {
+    prev.removeAttribute('src');
+    prev.classList.add('hidden');
+  }
+}
+
+function startEdit(s) {
+  state.editingId = s.id;
+  el('svcName').value = s.name;
+  el('svcDuration').value = s.duration_min;
+  el('svcPrice').value = s.price_eur;
+  el('svcDesc').value = s.description || '';
+  el('svcImage').value = s.image || '';
+  updateImagePreview();
+  el('serviceFormTitle').textContent = 'Uredi storitev: ' + s.name;
+  el('svcSubmitBtn').textContent = 'Shrani spremembe';
+  el('svcCancelEdit').classList.remove('hidden');
+  el('serviceMsg').innerHTML = '';
+  // Preklopi na zavihek Storitve in pokaži obrazec.
+  document.querySelector('.tab[data-tab="services"]').click();
+  el('serviceFormTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearEdit() {
+  state.editingId = null;
+  el('serviceForm').reset();
+  updateImagePreview();
+  el('serviceFormTitle').textContent = 'Dodaj storitev';
+  el('svcSubmitBtn').textContent = 'Dodaj';
+  el('svcCancelEdit').classList.add('hidden');
+}
+
+async function saveService(e) {
   e.preventDefault();
+  const payload = {
+    name: el('svcName').value,
+    duration_min: Number(el('svcDuration').value),
+    price_eur: Number(el('svcPrice').value),
+    description: el('svcDesc').value,
+    image: el('svcImage').value.trim(),
+  };
   try {
-    await api('/api/admin/services', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: el('svcName').value,
-        duration_min: Number(el('svcDuration').value),
-        price_eur: Number(el('svcPrice').value),
-      }),
-    });
-    el('serviceForm').reset();
-    showMsg(el('serviceMsg'), 'Storitev dodana.', 'ok');
+    if (state.editingId) {
+      await api('/api/admin/services/' + state.editingId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      showMsg(el('serviceMsg'), 'Storitev posodobljena.', 'ok');
+    } else {
+      await api('/api/admin/services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      showMsg(el('serviceMsg'), 'Storitev dodana.', 'ok');
+    }
+    clearEdit();
     await loadServices();
+    if (state.calendar) state.calendar.refetchEvents();
   } catch (err) {
     showMsg(el('serviceMsg'), err.message, 'err');
-  }
-}
-
-/* ---------- Termini ---------- */
-
-function renderChips() {
-  const wrap = el('timeChips');
-  wrap.innerHTML = '';
-  state.pendingTimes.sort();
-  for (const t of state.pendingTimes) {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'tab';
-    chip.textContent = t + '  ✕';
-    chip.title = 'Klikni za odstranitev';
-    chip.addEventListener('click', () => {
-      state.pendingTimes = state.pendingTimes.filter((x) => x !== t);
-      renderChips();
-    });
-    wrap.appendChild(chip);
-  }
-}
-
-function addTime() {
-  const v = el('slotTime').value;
-  if (v && !state.pendingTimes.includes(v)) {
-    state.pendingTimes.push(v);
-    renderChips();
-  }
-}
-
-async function createSlots(e) {
-  e.preventDefault();
-  if (state.pendingTimes.length === 0) {
-    showMsg(el('slotMsg'), 'Dodajte vsaj eno uro.', 'err');
-    return;
-  }
-  try {
-    const out = await api('/api/admin/slots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        service_id: Number(el('slotService').value),
-        date: el('slotDate').value,
-        times: state.pendingTimes,
-      }),
-    });
-    let txt = `Odprtih ${out.created} terminov.`;
-    if (out.skipped) txt += ` ${out.skipped} preskočenih (že obstajajo).`;
-    showMsg(el('slotMsg'), txt, 'ok');
-    state.pendingTimes = [];
-    renderChips();
-    await loadSlots();
-  } catch (err) {
-    showMsg(el('slotMsg'), err.message, 'err');
-  }
-}
-
-async function loadSlots() {
-  const rows = await api('/api/admin/slots');
-  const tbody = el('slotsTable').querySelector('tbody');
-  tbody.innerHTML = '';
-
-  if (rows.length === 0) {
-    const tr = document.createElement('tr');
-    const c = document.createElement('td');
-    c.colSpan = 7;
-    c.className = 'muted';
-    c.textContent = 'Ni terminov.';
-    tr.appendChild(c);
-    tbody.appendChild(tr);
-    return;
-  }
-
-  for (const s of rows) {
-    const tr = document.createElement('tr');
-    tr.append(
-      td(formatDay(s.date)),
-      td(`${s.start_time}–${s.end_time}`),
-      td(s.service_name),
-      td(eur(s.price_eur)),
-      badgeCell(
-        s.status === 'booked' ? 'Rezervirano' : 'Prosto',
-        s.status === 'booked' ? 'booked' : 'free'
-      ),
-      td(
-        s.customer_name
-          ? `${s.customer_name} · ${s.customer_phone}`
-          : '—'
-      )
-    );
-
-    const actions = document.createElement('td');
-    if (s.status === 'free') {
-      actions.appendChild(
-        mkBtn('Izbriši', 'danger small', async () => {
-          if (!confirm('Izbrisati ta prosti termin?')) return;
-          try {
-            await api('/api/admin/slots/' + s.id, { method: 'DELETE' });
-            await loadSlots();
-          } catch (err) {
-            alert(err.message);
-          }
-        })
-      );
-    } else {
-      actions.textContent = '—';
-    }
-    tr.appendChild(actions);
-    tbody.appendChild(tr);
   }
 }
 
@@ -348,9 +416,9 @@ function mkBtn(label, cls, onClick) {
 
 el('loginForm').addEventListener('submit', doLogin);
 el('logoutBtn').addEventListener('click', logout);
-el('serviceForm').addEventListener('submit', addService);
-el('slotForm').addEventListener('submit', createSlots);
-el('addTimeBtn').addEventListener('click', addTime);
+el('serviceForm').addEventListener('submit', saveService);
+el('svcCancelEdit').addEventListener('click', clearEdit);
+el('svcImage').addEventListener('input', updateImagePreview);
 setupTabs();
 
 (async function init() {

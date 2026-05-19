@@ -1,9 +1,15 @@
 'use strict';
 
 const express = require('express');
-const { db, addMinutes } = require('../db');
+const { db } = require('../db');
 const { verifyPassword, createSession, requireAdmin } = require('../auth');
-const { isValidDate, isValidTime, cleanStr } = require('../validate');
+const {
+  isValidDate,
+  isValidTime,
+  isValidHttpUrl,
+  cleanStr,
+  todayStr,
+} = require('../validate');
 
 const router = express.Router();
 
@@ -24,10 +30,15 @@ router.get('/me', (req, res) => res.json({ ok: true }));
 
 /* ---------- Storitve ---------- */
 
+function validImage(image) {
+  return image === '' || isValidHttpUrl(image);
+}
+
 router.get('/services', (req, res) => {
   const rows = db
     .prepare(
-      `SELECT id, name, duration_min, price_eur, active
+      `SELECT id, name, duration_min, price_eur, description, image,
+              active, created_at
        FROM services ORDER BY active DESC, name`
     )
     .all();
@@ -39,6 +50,8 @@ router.post('/services', (req, res) => {
   const name = cleanStr(body.name, 120);
   const duration = Number(body.duration_min);
   const price = Number(body.price_eur);
+  const description = cleanStr(body.description, 2000);
+  const image = cleanStr(body.image, 500);
 
   if (name.length < 2) {
     return res.status(400).json({ error: 'Vnesite ime storitve.' });
@@ -49,13 +62,16 @@ router.post('/services', (req, res) => {
   if (!Number.isFinite(price) || price < 0 || price > 100000) {
     return res.status(400).json({ error: 'Neveljavna cena.' });
   }
+  if (!validImage(image)) {
+    return res.status(400).json({ error: 'Neveljaven URL slike.' });
+  }
 
   const info = db
     .prepare(
-      `INSERT INTO services (name, duration_min, price_eur)
-       VALUES (?, ?, ?)`
+      `INSERT INTO services (name, duration_min, price_eur, description, image)
+       VALUES (?, ?, ?, ?, ?)`
     )
-    .run(name, duration, Math.round(price * 100) / 100);
+    .run(name, duration, Math.round(price * 100) / 100, description, image);
 
   res.status(201).json({ id: Number(info.lastInsertRowid) });
 });
@@ -79,6 +95,12 @@ router.patch('/services/:id', (req, res) => {
       : existing.duration_min;
   const price =
     body.price_eur !== undefined ? Number(body.price_eur) : existing.price_eur;
+  const description =
+    body.description !== undefined
+      ? cleanStr(body.description, 2000)
+      : existing.description;
+  const image =
+    body.image !== undefined ? cleanStr(body.image, 500) : existing.image;
   const active =
     body.active !== undefined ? (body.active ? 1 : 0) : existing.active;
 
@@ -91,12 +113,24 @@ router.patch('/services/:id', (req, res) => {
   if (!Number.isFinite(price) || price < 0 || price > 100000) {
     return res.status(400).json({ error: 'Neveljavna cena.' });
   }
+  if (!validImage(image)) {
+    return res.status(400).json({ error: 'Neveljaven URL slike.' });
+  }
 
   db.prepare(
     `UPDATE services
-     SET name = ?, duration_min = ?, price_eur = ?, active = ?
+     SET name = ?, duration_min = ?, price_eur = ?,
+         description = ?, image = ?, active = ?
      WHERE id = ?`
-  ).run(name, duration, Math.round(price * 100) / 100, active, id);
+  ).run(
+    name,
+    duration,
+    Math.round(price * 100) / 100,
+    description,
+    image,
+    active,
+    id
+  );
 
   res.json({ ok: true });
 });
@@ -107,11 +141,11 @@ router.delete('/services/:id', (req, res) => {
     return res.status(400).json({ error: 'Neveljaven ID.' });
   }
   const used = db
-    .prepare('SELECT COUNT(*) AS c FROM slots WHERE service_id = ?')
+    .prepare('SELECT COUNT(*) AS c FROM bookings WHERE service_id = ?')
     .get(id).c;
 
   if (used > 0) {
-    // Storitev ima termine — je ne brišemo, le deaktiviramo.
+    // Storitev ima rezervacije — je ne brišemo, le deaktiviramo.
     db.prepare('UPDATE services SET active = 0 WHERE id = ?').run(id);
     return res.json({ ok: true, deactivated: true });
   }
@@ -119,91 +153,116 @@ router.delete('/services/:id', (req, res) => {
   res.json({ ok: true, deleted: true });
 });
 
-/* ---------- Termini ---------- */
+/* ---------- Razpoložljivost (delovna okna) ---------- */
 
-router.get('/slots', (req, res) => {
+function rangeWhere(from, to) {
+  const cond = [];
+  const args = [];
+  if (isValidDate(from)) {
+    cond.push('date >= ?');
+    args.push(from);
+  }
+  if (isValidDate(to)) {
+    cond.push('date <= ?');
+    args.push(to);
+  }
+  return { sql: cond.length ? 'WHERE ' + cond.join(' AND ') : '', args };
+}
+
+router.get('/availability', (req, res) => {
+  const { sql, args } = rangeWhere(req.query.from, req.query.to);
   const rows = db
     .prepare(
-      `SELECT s.id, s.date, s.start_time, s.end_time, s.status,
-              srv.name AS service_name, srv.price_eur, srv.duration_min,
-              b.customer_name, b.customer_phone, b.customer_email, b.note
-       FROM slots s
-       JOIN services srv ON srv.id = s.service_id
-       LEFT JOIN bookings b ON b.slot_id = s.id
-       ORDER BY s.date DESC, s.start_time`
+      `SELECT id, date, start_time, end_time
+       FROM availability ${sql}
+       ORDER BY date, start_time`
     )
-    .all();
+    .all(...args);
   res.json(rows);
 });
 
-// Odpre enega ali več prostih terminov za isti datum in storitev.
-router.post('/slots', (req, res) => {
+router.post('/availability', (req, res) => {
   const body = req.body || {};
-  const serviceId = Number(body.service_id);
   const date = cleanStr(body.date, 10);
-  let times = body.times;
-  if (typeof times === 'string') times = [times];
-  if (!Array.isArray(times)) times = [];
-  times = [...new Set(times.map((t) => cleanStr(t, 5)))];
+  const start = cleanStr(body.start_time, 5);
+  const end = cleanStr(body.end_time, 5);
 
-  if (!Number.isInteger(serviceId) || serviceId <= 0) {
-    return res.status(400).json({ error: 'Izberite storitev.' });
-  }
-  const service = db
-    .prepare('SELECT * FROM services WHERE id = ?')
-    .get(serviceId);
-  if (!service) {
-    return res.status(404).json({ error: 'Storitev ne obstaja.' });
-  }
   if (!isValidDate(date)) {
     return res.status(400).json({ error: 'Neveljaven datum.' });
   }
-  if (times.length === 0 || !times.every(isValidTime)) {
+  if (!isValidTime(start) || !isValidTime(end)) {
+    return res.status(400).json({ error: 'Neveljaven čas.' });
+  }
+  if (start >= end) {
     return res
       .status(400)
-      .json({ error: 'Vnesite vsaj eno veljavno uro (HH:MM).' });
+      .json({ error: 'Konec mora biti za začetkom.' });
+  }
+  if (date < todayStr()) {
+    return res.status(400).json({ error: 'Okno ne sme biti v preteklosti.' });
   }
 
-  const insert = db.prepare(
-    `INSERT INTO slots (service_id, date, start_time, end_time)
-     VALUES (?, ?, ?, ?)`
-  );
-
-  let created = 0;
-  let skipped = 0;
-  for (const t of times) {
-    const end = addMinutes(t, service.duration_min);
-    try {
-      insert.run(serviceId, date, t, end);
-      created += 1;
-    } catch (err) {
-      if (String(err.message || '').includes('UNIQUE')) {
-        skipped += 1; // termin za to storitev/datum/uro že obstaja
-      } else {
-        throw err;
-      }
+  try {
+    const info = db
+      .prepare(
+        `INSERT INTO availability (date, start_time, end_time)
+         VALUES (?, ?, ?)`
+      )
+      .run(date, start, end);
+    res.status(201).json({
+      id: Number(info.lastInsertRowid),
+      date,
+      start_time: start,
+      end_time: end,
+    });
+  } catch (err) {
+    if (String(err.message || '').includes('UNIQUE')) {
+      return res.status(409).json({ error: 'To okno že obstaja.' });
     }
+    console.error('Napaka pri ustvarjanju okna:', err);
+    res.status(500).json({ error: 'Prišlo je do napake.' });
   }
-
-  res.status(201).json({ created, skipped });
 });
 
-router.delete('/slots/:id', (req, res) => {
+router.delete('/availability/:id', (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Neveljaven ID.' });
   }
-  const slot = db.prepare('SELECT status FROM slots WHERE id = ?').get(id);
-  if (!slot) {
-    return res.status(404).json({ error: 'Termin ne obstaja.' });
+  const row = db.prepare('SELECT id FROM availability WHERE id = ?').get(id);
+  if (!row) {
+    return res.status(404).json({ error: 'Okno ne obstaja.' });
   }
-  if (slot.status === 'booked') {
-    return res
-      .status(409)
-      .json({ error: 'Termin je rezerviran in ga ni mogoče izbrisati.' });
-  }
-  db.prepare('DELETE FROM slots WHERE id = ?').run(id);
+  db.prepare('DELETE FROM availability WHERE id = ?').run(id);
   res.json({ ok: true });
+});
+
+/* ---------- Koledar (razpoložljivost + rezervacije) ---------- */
+
+router.get('/calendar', (req, res) => {
+  const { sql, args } = rangeWhere(req.query.from, req.query.to);
+  const availability = db
+    .prepare(
+      `SELECT id, date, start_time, end_time
+       FROM availability ${sql}
+       ORDER BY date, start_time`
+    )
+    .all(...args);
+
+  const bSql = sql.replace(/\bdate\b/g, 'b.date');
+  const bookings = db
+    .prepare(
+      `SELECT b.id, b.service_id, srv.name AS service_name,
+              b.date, b.start_time, b.end_time,
+              b.customer_name, b.customer_phone
+       FROM bookings b
+       JOIN services srv ON srv.id = b.service_id
+       ${bSql}
+       ORDER BY b.date, b.start_time`
+    )
+    .all(...args);
+
+  res.json({ availability, bookings });
 });
 
 /* ---------- Rezervacije ---------- */
@@ -213,12 +272,11 @@ router.get('/bookings', (req, res) => {
     .prepare(
       `SELECT b.id, b.customer_name, b.customer_phone, b.customer_email,
               b.note, b.created_at,
-              s.date, s.start_time, s.end_time,
+              b.date, b.start_time, b.end_time,
               srv.name AS service_name, srv.price_eur
        FROM bookings b
-       JOIN slots s ON s.id = b.slot_id
-       JOIN services srv ON srv.id = s.service_id
-       ORDER BY s.date DESC, s.start_time`
+       JOIN services srv ON srv.id = b.service_id
+       ORDER BY b.date DESC, b.start_time`
     )
     .all();
   res.json(rows);

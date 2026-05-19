@@ -487,3 +487,73 @@ footer {
   .svc-info { animation: none; }
   * { transition: none !important; }
 }
+
+/* ---------- Profil storitve (stranke) ---------- */
+.svc-info img {
+  display: block;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+}
+
+/* ---------- Skrbniški koledar ---------- */
+#calendar {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-top: 10px;
+}
+.fc {
+  font-family: var(--sans);
+  font-size: 0.9rem;
+}
+.fc .fc-button {
+  background: var(--mauve);
+  border-color: var(--mauve-dark);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.fc .fc-button:hover { background: var(--mauve-dark); }
+.fc .fc-button-primary:not(:disabled).fc-button-active {
+  background: var(--espresso);
+  border-color: var(--espresso);
+}
+.fc .fc-toolbar-title { font-family: var(--serif); color: var(--espresso); }
+.fc-event { cursor: pointer; }
+
+.cal-legend {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 8px 0 4px;
+}
+.cal-legend .dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.cal-legend .dot-free { background: #5e7355; }
+.cal-legend .dot-booked { background: #a8998b; }
+
+/* ---------- Urejanje storitev (skrbnik) ---------- */
+.svc-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+.svc-img-preview {
+  display: block;
+  max-width: 220px;
+  border-radius: var(--radius-sm);
+  margin-top: 10px;
+  border: 1px solid var(--line);
+}

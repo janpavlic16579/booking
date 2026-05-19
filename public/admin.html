@@ -43,42 +43,20 @@
       <!-- Termini -->
       <section id="tab-slots">
         <div class="card">
-          <h2>Odpri nove proste termine</h2>
-          <form id="slotForm">
-            <div class="row">
-              <div>
-                <label for="slotService">Storitev</label>
-                <select id="slotService" required></select>
-              </div>
-              <div>
-                <label for="slotDate">Datum</label>
-                <input id="slotDate" type="date" required />
-              </div>
-            </div>
-
-            <label>Ure (klikni za dodajanje; izbrane bodo odprte kot termini)</label>
-            <div class="row">
-              <input id="slotTime" type="time" />
-              <button type="button" class="secondary" id="addTimeBtn" style="flex:0 0 auto;">Dodaj uro</button>
-            </div>
-            <div id="timeChips" class="row" style="margin-top:10px;"></div>
-
-            <div id="slotMsg"></div>
-            <div style="margin-top:14px;">
-              <button type="submit">Odpri termine</button>
-            </div>
-          </form>
-        </div>
-
-        <div class="card">
-          <h2>Vsi termini</h2>
-          <div class="table-wrap">
-            <table id="slotsTable">
-              <thead>
-                <tr><th>Datum</th><th>Ura</th><th>Storitev</th><th>Cena</th><th>Status</th><th>Stranka</th><th></th></tr>
-              </thead>
-              <tbody></tbody>
-            </table>
+          <h2>Delovni koledar</h2>
+          <p class="muted" style="margin-bottom:6px;">
+            Z miško povlecite čez želeni časovni interval, da odprete delovno okno.
+            Klik na zeleno okno ga izbriše. Rezervacije so prikazane v drugi barvi
+            (jih ni mogoče brisati tukaj).
+          </p>
+          <div class="cal-legend">
+            <span><i class="dot dot-free"></i> Prosto delovno okno</span>
+            <span><i class="dot dot-booked"></i> Rezervacija</span>
+          </div>
+          <div id="calMsg"></div>
+          <div id="calendar"></div>
+          <div id="calFallback" class="muted hidden" style="margin-top:12px;">
+            Koledarja ni bilo mogoče naložiti (preverite internetno povezavo).
           </div>
         </div>
       </section>
@@ -86,7 +64,7 @@
       <!-- Storitve -->
       <section id="tab-services" class="hidden">
         <div class="card">
-          <h2>Dodaj storitev</h2>
+          <h2 id="serviceFormTitle">Dodaj storitev</h2>
           <form id="serviceForm">
             <div class="row">
               <div>
@@ -102,9 +80,18 @@
                 <input id="svcPrice" type="number" min="0" step="0.01" required />
               </div>
             </div>
+
+            <label for="svcDesc">Opis</label>
+            <textarea id="svcDesc" maxlength="2000" placeholder="Opis storitve, ki ga vidi stranka…"></textarea>
+
+            <label for="svcImage">Slika (URL)</label>
+            <input id="svcImage" type="url" maxlength="500" placeholder="https://… ali img/…" />
+            <img id="svcImagePreview" class="svc-img-preview hidden" alt="Predogled slike" />
+
             <div id="serviceMsg"></div>
-            <div style="margin-top:14px;">
-              <button type="submit">Dodaj</button>
+            <div class="row" style="margin-top:14px;">
+              <button type="submit" id="svcSubmitBtn">Dodaj</button>
+              <button type="button" class="secondary hidden" id="svcCancelEdit">Prekliči urejanje</button>
             </div>
           </form>
         </div>
@@ -114,7 +101,7 @@
           <div class="table-wrap">
             <table id="servicesTable">
               <thead>
-                <tr><th>Ime</th><th>Trajanje</th><th>Cena</th><th>Status</th><th></th></tr>
+                <tr><th>Slika</th><th>Ime</th><th>Trajanje</th><th>Cena</th><th>Status</th><th></th></tr>
               </thead>
               <tbody></tbody>
             </table>
@@ -141,6 +128,7 @@
 
   <footer>Skrbniški del · Stiliranje nohtov</footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
   <script src="config.js"></script>
   <script src="admin.js"></script>
 </body>

@@ -3,6 +3,7 @@
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const HTTP_URL_RE = /^https?:\/\/[^\s]+$/;
 
 function isValidDate(s) {
   if (typeof s !== 'string' || !DATE_RE.test(s)) return false;
@@ -30,10 +31,32 @@ function cleanStr(v, max = 200) {
   return v.trim().slice(0, max);
 }
 
+/** Absolutni http(s) URL (do 500 znakov). Prazen niz NI veljaven tu. */
+function isValidHttpUrl(s) {
+  return typeof s === 'string' && s.length <= 500 && HTTP_URL_RE.test(s);
+}
+
+/** "HH:MM" -> minute od polnoči. */
+function toMin(hhmm) {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  return h * 60 + m;
+}
+
+/** Minute od polnoči -> "HH:MM" (omejeno na isti dan). */
+function fromMin(total) {
+  let t = Math.max(0, Math.min(24 * 60 - 1, Math.floor(total)));
+  const h = Math.floor(t / 60);
+  const m = t % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 module.exports = {
   isValidDate,
   isValidTime,
   isValidEmail,
+  isValidHttpUrl,
   todayStr,
   cleanStr,
+  toMin,
+  fromMin,
 };

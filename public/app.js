@@ -30,6 +30,10 @@ function eur(n) {
   return Number(n).toFixed(2).replace('.', ',') + ' €';
 }
 
+function slotKey(s) {
+  return `${s.service_id}|${s.date}|${s.start_time}`;
+}
+
 function showMsg(container, text, kind) {
   container.innerHTML = '';
   const div = document.createElement('div');
@@ -64,11 +68,29 @@ async function loadServices() {
   }
 }
 
+function selectedService() {
+  const filter = el('serviceFilter').value;
+  if (!filter) return null;
+  return state.services.find((s) => String(s.id) === filter) || null;
+}
+
 async function loadSlots() {
   const container = el('slotsContainer');
+  const svc = selectedService();
+
+  if (!svc) {
+    state.slots = [];
+    container.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'Najprej izberite storitev.';
+    container.appendChild(p);
+    return;
+  }
+
   container.textContent = 'Nalaganje terminov…';
   try {
-    state.slots = await api('/api/slots');
+    state.slots = await api('/api/slots?service_id=' + svc.id);
   } catch (err) {
     container.textContent = '';
     showMsg(container, err.message, 'err');
@@ -81,11 +103,7 @@ function renderSlots() {
   const container = el('slotsContainer');
   container.innerHTML = '';
 
-  const filter = el('serviceFilter').value;
-  const slots = filter
-    ? state.slots.filter((s) => String(s.service_id) === filter)
-    : state.slots;
-
+  const slots = state.slots;
   if (slots.length === 0) {
     const p = document.createElement('p');
     p.className = 'muted';
@@ -116,7 +134,10 @@ function renderSlots() {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'slot-btn';
-      if (state.selectedSlot && state.selectedSlot.id === s.id) {
+      if (
+        state.selectedSlot &&
+        slotKey(state.selectedSlot) === slotKey(s)
+      ) {
         btn.classList.add('selected');
       }
 
@@ -169,8 +190,11 @@ async function submitBooking(e) {
   const btn = el('submitBtn');
   btn.disabled = true;
 
+  const s = state.selectedSlot;
   const payload = {
-    slot_id: state.selectedSlot.id,
+    service_id: s.service_id,
+    date: s.date,
+    start_time: s.start_time,
     customer_name: el('name').value,
     customer_phone: el('phone').value,
     customer_email: el('email').value,
@@ -210,27 +234,38 @@ function updateServiceInfo() {
   toggle.setAttribute('aria-expanded', 'false');
   toggle.textContent = 'Več informacij';
 
-  const filter = el('serviceFilter').value;
-  if (!filter) return;
+  const svc = selectedService();
+  if (!svc) return;
 
-  const svc = state.services.find((s) => String(s.id) === filter);
-  const info = svc && window.SERVICE_INFO ? window.SERVICE_INFO[svc.name] : null;
-  if (!info) return;
+  if (svc.image) {
+    const img = document.createElement('img');
+    img.src = svc.image;
+    img.alt = svc.name;
+    img.loading = 'lazy';
+    panel.appendChild(img);
+  }
 
-  const desc = document.createElement('p');
-  desc.className = 'svc-info-desc';
-  desc.textContent = info.description;
-  panel.appendChild(desc);
+  const descText = (svc.description || '').trim();
+  if (descText) {
+    for (const part of descText.split(/\n{2,}/)) {
+      const p = document.createElement('p');
+      p.className = 'svc-info-desc';
+      p.textContent = part.trim();
+      panel.appendChild(p);
+    }
+  }
 
-  for (const [icon, text] of [['⏳', info.duration], ['📅', info.refresh]]) {
-    if (!text) continue;
+  for (const [icon, text] of [
+    ['⏳', `Trajanje: ${svc.duration_min} min`],
+    ['💶', `Cena: ${eur(svc.price_eur)}`],
+  ]) {
     const line = document.createElement('p');
     line.className = 'svc-info-meta';
     line.textContent = `${icon} ${text}`;
     panel.appendChild(line);
   }
 
-  toggle.classList.remove('hidden');
+  if (svc.image || descText) toggle.classList.remove('hidden');
 }
 
 function toggleServiceInfo() {
@@ -242,8 +277,14 @@ function toggleServiceInfo() {
   toggle.textContent = willShow ? 'Manj informacij' : 'Več informacij';
 }
 
-el('serviceFilter').addEventListener('change', renderSlots);
-el('serviceFilter').addEventListener('change', updateServiceInfo);
+function onServiceChange() {
+  state.selectedSlot = null;
+  el('bookingCard').classList.add('hidden');
+  updateServiceInfo();
+  loadSlots();
+}
+
+el('serviceFilter').addEventListener('change', onServiceChange);
 el('svcInfoToggle').addEventListener('click', toggleServiceInfo);
 el('bookingForm').addEventListener('submit', submitBooking);
 el('cancelBtn').addEventListener('click', cancelSelection);
