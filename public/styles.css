@@ -557,3 +557,65 @@ footer {
   margin-top: 10px;
   border: 1px solid var(--line);
 }
+
+/* ---------- Modalno okno ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(40, 34, 28, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  z-index: 1000;
+  animation: rise 0.2s ease both;
+}
+.modal-box {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 30px 32px 32px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.modal-box h2 {
+  font-size: 1.5rem;
+  margin-bottom: 18px;
+  padding-right: 28px;
+}
+.modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: var(--cream);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.modal-close:hover { background: var(--sand); transform: none; }
+.def-row {
+  display: flex;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.def-row:last-of-type { border-bottom: none; }
+.def-label {
+  flex: 0 0 130px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-top: 2px;
+}
+.def-value { flex: 1; color: var(--ink); word-break: break-word; }

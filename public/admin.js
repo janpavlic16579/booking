@@ -162,7 +162,13 @@ async function fetchFeed(info, success, failure) {
         end: a.date + 'T' + a.end_time,
         backgroundColor: '#5e7355',
         borderColor: '#4f6147',
-        extendedProps: { kind: 'availability', realId: a.id },
+        extendedProps: {
+          kind: 'availability',
+          realId: a.id,
+          date: a.date,
+          start_time: a.start_time,
+          end_time: a.end_time,
+        },
       });
     }
     for (const b of data.bookings) {
@@ -174,7 +180,7 @@ async function fetchFeed(info, success, failure) {
         backgroundColor: '#a8998b',
         borderColor: '#8c7d6f',
         editable: false,
-        extendedProps: { kind: 'booking', phone: b.customer_phone },
+        extendedProps: { kind: 'booking', booking: b },
       });
     }
     success(events);
@@ -204,21 +210,138 @@ async function onSelectCreate(sel) {
   }
 }
 
-async function onEventClick(info) {
+function onEventClick(info) {
   const p = info.event.extendedProps;
   if (p.kind === 'availability') {
+    openAvailabilityModal(p);
+  } else if (p.kind === 'booking') {
+    openBookingModal(p.booking);
+  }
+}
+
+/* ---------- Modalno okno ---------- */
+
+function openModal(title) {
+  el('modalTitle').textContent = title;
+  el('modalBody').innerHTML = '';
+  el('modalOverlay').classList.remove('hidden');
+  return el('modalBody');
+}
+
+function closeModal() {
+  el('modalOverlay').classList.add('hidden');
+  el('modalBody').innerHTML = '';
+}
+
+function defRow(label, value) {
+  const wrap = document.createElement('div');
+  wrap.className = 'def-row';
+  const dt = document.createElement('span');
+  dt.className = 'def-label';
+  dt.textContent = label;
+  const dd = document.createElement('span');
+  dd.className = 'def-value';
+  dd.textContent = value || '—';
+  wrap.append(dt, dd);
+  return wrap;
+}
+
+function openBookingModal(b) {
+  const body = openModal('Podatki o rezervaciji');
+  body.append(
+    defRow('Storitev', b.service_name),
+    defRow('Datum', formatDay(b.date)),
+    defRow('Ura', `${b.start_time}–${b.end_time}`),
+    defRow('Ime in priimek', b.customer_name),
+    defRow('Telefon', b.customer_phone),
+    defRow('E-pošta', b.customer_email),
+    defRow('Opomba', b.note)
+  );
+
+  const tel = document.createElement('a');
+  tel.href = 'tel:' + (b.customer_phone || '');
+  tel.className = 'secondary small';
+  tel.style.display = 'inline-block';
+  tel.style.marginTop = '6px';
+  tel.textContent = 'Pokliči stranko';
+
+  const mail = document.createElement('a');
+  mail.href = 'mailto:' + (b.customer_email || '');
+  mail.className = 'secondary small';
+  mail.style.display = 'inline-block';
+  mail.style.marginTop = '6px';
+  mail.style.marginLeft = '8px';
+  mail.textContent = 'Pošlji e-pošto';
+
+  const actions = document.createElement('div');
+  actions.style.marginTop = '16px';
+  actions.append(tel, mail);
+  body.appendChild(actions);
+}
+
+function openAvailabilityModal(p) {
+  const body = openModal('Delovno okno · ' + formatDay(p.date));
+  const msg = document.createElement('div');
+
+  const grid = document.createElement('div');
+  grid.className = 'row';
+
+  const mkField = (labelText, value) => {
+    const box = document.createElement('div');
+    const lab = document.createElement('label');
+    lab.textContent = labelText;
+    const inp = document.createElement('input');
+    inp.type = 'time';
+    inp.value = value;
+    box.append(lab, inp);
+    grid.appendChild(box);
+    return inp;
+  };
+  const startInp = mkField('Začetek', p.start_time);
+  const endInp = mkField('Konec', p.end_time);
+
+  const save = mkBtn('Shrani spremembe', '', async () => {
+    save.disabled = true;
+    try {
+      await api('/api/admin/availability/' + p.realId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start_time: startInp.value,
+          end_time: endInp.value,
+        }),
+      });
+      closeModal();
+      showMsg(el('calMsg'), 'Delovno okno posodobljeno.', 'ok');
+      state.calendar.refetchEvents();
+    } catch (err) {
+      showMsg(msg, err.message, 'err');
+      save.disabled = false;
+    }
+  });
+
+  const del = mkBtn('Izbriši okno', 'danger', async () => {
     if (!confirm('Izbrisati to delovno okno?')) return;
+    del.disabled = true;
     try {
       await api('/api/admin/availability/' + p.realId, { method: 'DELETE' });
+      closeModal();
       showMsg(el('calMsg'), 'Okno izbrisano.', 'ok');
-    } catch (err) {
-      showMsg(el('calMsg'), err.message, 'err');
-    } finally {
       state.calendar.refetchEvents();
+    } catch (err) {
+      showMsg(msg, err.message, 'err');
+      del.disabled = false;
     }
-  } else if (p.kind === 'booking') {
-    alert(`${info.event.title}\nTelefon: ${p.phone || '—'}`);
-  }
+  });
+
+  const cancel = mkBtn('Prekliči', 'secondary', closeModal);
+
+  const actions = document.createElement('div');
+  actions.className = 'row';
+  actions.style.marginTop = '16px';
+  actions.append(save, del, cancel);
+
+  body.append(grid, msg, actions);
 }
 
 /* ---------- Storitve ---------- */
@@ -419,6 +542,15 @@ el('logoutBtn').addEventListener('click', logout);
 el('serviceForm').addEventListener('submit', saveService);
 el('svcCancelEdit').addEventListener('click', clearEdit);
 el('svcImage').addEventListener('input', updateImagePreview);
+el('modalClose').addEventListener('click', closeModal);
+el('modalOverlay').addEventListener('click', (e) => {
+  if (e.target === el('modalOverlay')) closeModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !el('modalOverlay').classList.contains('hidden')) {
+    closeModal();
+  }
+});
 setupTabs();
 
 (async function init() {

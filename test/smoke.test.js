@@ -67,6 +67,7 @@ const FUT2 = futureDate(5); // availability CRUD
 const FUT3 = futureDate(7); // delni rep
 const FUT4 = futureDate(9); // navzkrižno prekrivanje
 const FUT5 = futureDate(11); // sočasnost
+const FUT6 = futureDate(13); // PATCH okna
 
 test('strani in health delujejo', async () => {
   const health = await fetch(base + '/health');
@@ -267,6 +268,17 @@ test('admin vidi rezervacijo', async () => {
   assert.equal(r.body[0].service_name, 'Test storitev');
 });
 
+test('koledar feed vsebuje e-pošto in opombo rezervacije', async () => {
+  const r = await j('/api/admin/calendar?from=' + FUT1 + '&to=' + FUT1, {
+    headers: authHeaders(),
+  });
+  assert.equal(r.status, 200);
+  const b = r.body.bookings.find((x) => x.customer_name === 'Ana Novak');
+  assert.ok(b);
+  assert.equal(b.customer_email, 'ana@example.com');
+  assert.equal(b.note, 'Francoska manikira');
+});
+
 test('brisanje okna ne izbriše obstoječe rezervacije', async () => {
   const list = await j('/api/admin/availability?from=' + FUT1 + '&to=' + FUT1, {
     headers: authHeaders(),
@@ -318,6 +330,47 @@ test('availability CRUD', async () => {
   const missing = await j('/api/admin/availability/999999', {
     method: 'DELETE',
     headers: authHeaders(),
+  });
+  assert.equal(missing.status, 404);
+});
+
+test('urejanje delovnega okna (PATCH spremeni trajanje)', async () => {
+  const create = await j('/api/admin/availability', {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      date: FUT6,
+      start_time: '09:00',
+      end_time: '12:00',
+    }),
+  });
+  assert.equal(create.status, 201);
+  const id = create.body.id;
+
+  const patch = await j('/api/admin/availability/' + id, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ start_time: '09:00', end_time: '10:30' }),
+  });
+  assert.equal(patch.status, 200);
+  assert.equal(patch.body.end_time, '10:30');
+
+  const list = await j('/api/admin/availability?from=' + FUT6 + '&to=' + FUT6, {
+    headers: authHeaders(),
+  });
+  assert.equal(list.body[0].end_time, '10:30');
+
+  const badPatch = await j('/api/admin/availability/' + id, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ start_time: '11:00', end_time: '10:00' }),
+  });
+  assert.equal(badPatch.status, 400);
+
+  const missing = await j('/api/admin/availability/999999', {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ start_time: '09:00', end_time: '10:00' }),
   });
   assert.equal(missing.status, 404);
 });

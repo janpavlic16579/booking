@@ -224,6 +224,50 @@ router.post('/availability', (req, res) => {
   }
 });
 
+router.patch('/availability/:id', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Neveljaven ID.' });
+  }
+  const row = db
+    .prepare('SELECT id, date, start_time, end_time FROM availability WHERE id = ?')
+    .get(id);
+  if (!row) {
+    return res.status(404).json({ error: 'Okno ne obstaja.' });
+  }
+
+  const body = req.body || {};
+  const start =
+    body.start_time !== undefined
+      ? cleanStr(body.start_time, 5)
+      : row.start_time;
+  const end =
+    body.end_time !== undefined ? cleanStr(body.end_time, 5) : row.end_time;
+
+  if (!isValidTime(start) || !isValidTime(end)) {
+    return res.status(400).json({ error: 'Neveljaven čas.' });
+  }
+  if (start >= end) {
+    return res.status(400).json({ error: 'Konec mora biti za začetkom.' });
+  }
+  if (row.date < todayStr()) {
+    return res.status(400).json({ error: 'Okno je v preteklosti.' });
+  }
+
+  try {
+    db.prepare(
+      `UPDATE availability SET start_time = ?, end_time = ? WHERE id = ?`
+    ).run(start, end, id);
+    res.json({ ok: true, id, date: row.date, start_time: start, end_time: end });
+  } catch (err) {
+    if (String(err.message || '').includes('UNIQUE')) {
+      return res.status(409).json({ error: 'To okno že obstaja.' });
+    }
+    console.error('Napaka pri urejanju okna:', err);
+    res.status(500).json({ error: 'Prišlo je do napake.' });
+  }
+});
+
 router.delete('/availability/:id', (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
@@ -254,7 +298,8 @@ router.get('/calendar', (req, res) => {
     .prepare(
       `SELECT b.id, b.service_id, srv.name AS service_name,
               b.date, b.start_time, b.end_time,
-              b.customer_name, b.customer_phone
+              b.customer_name, b.customer_phone, b.customer_email,
+              b.note, b.created_at
        FROM bookings b
        JOIN services srv ON srv.id = b.service_id
        ${bSql}
