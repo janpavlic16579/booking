@@ -6,8 +6,8 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning server.js",
-    "test": "node --disable-warning=ExperimentalWarning --test"
+    "start": "node --experimental-sqlite --disable-warning=ExperimentalWarning server.js",
+    "test": "node --experimental-sqlite --disable-warning=ExperimentalWarning --test"
   },
   "engines": {
     "node": ">=22.13.0"
