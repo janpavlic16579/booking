@@ -23,7 +23,8 @@ services:
     autoDeploy: true
     envVars:
       - key: ADMIN_PASSWORD
-        sync: false          # Render te ob objavi prosi, da vneseš geslo
+        value: Marjetka123   # Pripeto, da prijava zanesljivo deluje.
+                             # SPREMENI v močno geslo (tu ali v Render Environment).
       - key: NODE_VERSION
         value: "22"
       # Za trajne podatke (s plačljivim diskom) odkomentiraj:
