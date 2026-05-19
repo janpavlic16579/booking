@@ -127,6 +127,33 @@ header.site .nav-link:hover {
   transform: translateY(-1px);
 }
 
+/* Skrbniški dostop — nevsiljiv gumb v kotu (samo na strani za stranke) */
+header.site .admin-access {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--pill);
+  backdrop-filter: blur(2px);
+  opacity: 0.7;
+  transition: opacity 0.2s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+header.site .admin-access:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.5);
+  text-decoration: none;
+  opacity: 1;
+}
+
 /* ---------- Postavitev ---------- */
 .container {
   max-width: 1080px;
@@ -446,6 +473,7 @@ footer {
 
 @media (max-width: 640px) {
   header.site { min-height: 60vh; padding: 54px 18px 64px; }
+  header.site .admin-access { top: 12px; right: 12px; font-size: 0.58rem; padding: 6px 12px; }
   .container { margin-top: -40px; padding-bottom: 64px; }
   .card { padding: 24px 20px 26px; }
   .row { flex-direction: column; gap: 14px; }
