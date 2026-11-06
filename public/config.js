@@ -11,5 +11,5 @@
 // backend pa na Renderju — zato kažemo na absolutni Render URL.
 // Backend dovoli CORS z vseh originov (avtentikacija je žeton, ne piškotek),
 // zato čezizvorni klici delujejo.
-window.API_BASE = "https://booking-nohti.onrender.com";
+window.API_BASE = "https://booking-2kn2.onrender.com";
 
