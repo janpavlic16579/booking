@@ -11,5 +11,10 @@
 // backend pa na Renderju — zato kažemo na absolutni Render URL.
 // Backend dovoli CORS z vseh originov (avtentikacija je žeton, ne piškotek),
 // zato čezizvorni klici delujejo.
-window.API_BASE = "https://booking-2kn2.onrender.com";
+// Lokalni razvoj (npm start na localhost) uporablja lokalni backend, da testne
+// rezervacije ne pristanejo v produkcijski bazi.
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+window.API_BASE = LOCAL_HOSTS.includes(location.hostname)
+  ? ""
+  : "https://booking-2kn2.onrender.com";
 
