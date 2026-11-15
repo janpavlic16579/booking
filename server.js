@@ -7,7 +7,7 @@ const publicRoutes = require('./src/routes/public');
 const adminRoutes = require('./src/routes/admin');
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = process.env.PORT === undefined ? 3000 : Number(process.env.PORT);
 
 // CORS — dovoli statičnemu frontendu (GitHub Pages / lastna domena) klice na API.
 // ALLOWED_ORIGINS: vejica-ločen seznam; "*" ali prazno = dovoli vse.

@@ -7,7 +7,7 @@ const HTTP_URL_RE = /^https?:\/\/[^\s]+$/;
 
 function isValidDate(s) {
   if (typeof s !== 'string' || !DATE_RE.test(s)) return false;
-  const d = new Date(s + 'T00:00:00');
+  const d = new Date(s + 'T00:00:00Z');
   return !Number.isNaN(d.getTime()) && s === d.toISOString().slice(0, 10);
 }
 

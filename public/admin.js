@@ -136,6 +136,8 @@ function initCalendar() {
     height: 'auto',
     selectable: true,
     selectMirror: true,
+    selectLongPressDelay: 300,
+    dateClick: (info) => openCreateAvailability(info.dateStr),
     headerToolbar: {
       left: 'prev,next today',
       center: 'title',
@@ -190,24 +192,64 @@ async function fetchFeed(info, success, failure) {
   }
 }
 
-async function onSelectCreate(sel) {
-  const date = sel.startStr.slice(0, 10);
-  const start_time = sel.startStr.slice(11, 16);
-  let end_time = sel.endStr.slice(11, 16);
-  if (sel.endStr.slice(0, 10) !== date) end_time = '23:59';
-  try {
-    await api('/api/admin/availability', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, start_time, end_time }),
-    });
-    showMsg(el('calMsg'), 'Delovno okno dodano.', 'ok');
-  } catch (err) {
-    showMsg(el('calMsg'), err.message, 'err');
-  } finally {
+function onSelectCreate(sel) {
+  if (sel.startStr.slice(0, 10) !== sel.endStr.slice(0, 10)) {
     state.calendar.unselect();
-    state.calendar.refetchEvents();
+    showMsg(el('calMsg'), 'Izberite časovni interval znotraj enega dne.', 'err');
+    return;
   }
+  openCreateAvailability(sel.startStr, sel.endStr.slice(11, 16));
+}
+
+function openCreateAvailability(start = '', end = '') {
+  const body = openModal('Dodaj delovno okno');
+  const form = document.createElement('form');
+  form.innerHTML = `
+    <label for="availDate">Datum</label>
+    <input id="availDate" type="date" required />
+    <label for="availStart">Začetek</label>
+    <input id="availStart" type="time" required />
+    <label for="availEnd">Konec</label>
+    <input id="availEnd" type="time" required />
+    <div id="availMsg"></div>
+    <div class="row" style="margin-top:16px;">
+      <button type="submit">Dodaj okno</button>
+      <button type="button" class="secondary" id="availCancel">Prekliči</button>
+    </div>`;
+  body.appendChild(form);
+  // Lokalni datum se ujema s časom, ki ga prikazuje koledar.
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  el('availDate').min = today;
+  el('availDate').value = start.slice(0, 10) || today;
+  el('availStart').value = start.slice(11, 16) || '09:00';
+  el('availEnd').value = end;
+  el('availCancel').addEventListener('click', closeModal);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    try {
+      await api('/api/admin/availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: el('availDate').value,
+          start_time: el('availStart').value,
+          end_time: el('availEnd').value,
+        }),
+      });
+      closeModal();
+      showMsg(el('calMsg'), 'Delovno okno dodano.', 'ok');
+      if (state.calendar) {
+        state.calendar.unselect();
+        state.calendar.refetchEvents();
+      }
+    } catch (err) {
+      showMsg(el('availMsg'), err.message, 'err');
+      button.disabled = false;
+    }
+  });
 }
 
 function onEventClick(info) {
@@ -537,6 +579,7 @@ function mkBtn(label, cls, onClick) {
 
 /* ---------- Init ---------- */
 
+el('addAvailability').addEventListener('click', () => openCreateAvailability());
 el('loginForm').addEventListener('submit', doLogin);
 el('logoutBtn').addEventListener('click', logout);
 el('serviceForm').addEventListener('submit', saveService);
