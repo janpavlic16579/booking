@@ -47,14 +47,16 @@
         <div class="card">
           <h2>Delovni koledar</h2>
           <p class="muted" style="margin-bottom:6px;">
-            Z miško povlecite čez želeni časovni interval, da odprete delovno okno.
-            Klik na zeleno okno ga izbriše. Rezervacije so prikazane v drugi barvi
-            (jih ni mogoče brisati tukaj).
+            Kliknite ali tapnite uro za dodajanje delovnega okna. Z miško lahko
+            povlečete čez interval; na telefonu ga najprej pridržite.
+            Klik na zeleno okno odpre urejanje ali brisanje.
+            Rezervacije so prikazane v drugi barvi.
           </p>
           <div class="cal-legend">
             <span><i class="dot dot-free"></i> Prosto delovno okno</span>
             <span><i class="dot dot-booked"></i> Rezervacija</span>
           </div>
+          <button type="button" id="addAvailability">Dodaj delovno okno</button>
           <div id="calMsg"></div>
           <div id="calendar"></div>
           <div id="calFallback" class="muted hidden" style="margin-top:12px;">
