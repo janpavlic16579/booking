@@ -7,7 +7,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "PGLITE_DIR=memory:// node --test"
+    "test": "PGLITE_DIR=memory:// node --test --test-force-exit"
   },
   "engines": {
     "node": "24.x"
