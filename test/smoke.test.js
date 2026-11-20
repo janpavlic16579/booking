@@ -2,45 +2,27 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs');
+const crypto = require('node:crypto');
 
-const TMP_DB = path.join(
-  os.tmpdir(),
-  `booking-test-${process.pid}-${Date.now()}.db`
-);
-
-const ALLOWED_ORIGIN = 'https://nohti.example';
-
-process.env.PORT = '0';
 process.env.ADMIN_PASSWORD = 'testpass';
-process.env.DB_PATH = TMP_DB;
 process.env.SESSION_TTL_HOURS = '1';
-process.env.ALLOWED_ORIGINS = ALLOWED_ORIGIN;
+process.env.PGLITE_DIR = 'memory://';
 
-const { server } = require('../server');
+const app = require('../server');
 
+let server;
 let base;
 let token;
 
 test.before(async () => {
-  await new Promise((resolve) => {
-    if (server.listening) return resolve();
-    server.once('listening', resolve);
-  });
+  await require('../src/db').ready();
+  server = app.listen(0);
+  await new Promise((resolve) => server.once('listening', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
 });
 
 test.after(() => {
   server.close();
-  for (const suffix of ['', '-journal', '-wal', '-shm']) {
-    try {
-      fs.unlinkSync(TMP_DB + suffix);
-    } catch {
-      /* ignore */
-    }
-  }
 });
 
 async function j(pathname, opts = {}) {
@@ -516,44 +498,46 @@ test('validacija URL slike pri storitvi', async () => {
   assert.equal(row.description, 'Posodobljen opis.');
 });
 
-/* ---------- CORS (frontend na drugem originu) ---------- */
+/* ---------- Seja (žeton brez stanja) ---------- */
 
-test('CORS: preflight OPTIONS vrne 204 z dovoljenimi glavami', async () => {
-  const res = await fetch(base + '/api/bookings', {
-    method: 'OPTIONS',
-    headers: {
-      Origin: ALLOWED_ORIGIN,
-      'Access-Control-Request-Method': 'POST',
-      'Access-Control-Request-Headers': 'content-type,authorization',
-    },
-  });
-  assert.equal(res.status, 204);
-  assert.equal(res.headers.get('access-control-allow-origin'), ALLOWED_ORIGIN);
-  const methods = res.headers.get('access-control-allow-methods') || '';
-  assert.match(methods, /POST/);
-  assert.match(methods, /OPTIONS/);
-  const allowHeaders = (
-    res.headers.get('access-control-allow-headers') || ''
-  ).toLowerCase();
-  assert.match(allowHeaders, /authorization/);
-  assert.match(allowHeaders, /content-type/);
+function signToken(expiry, password = 'testpass') {
+  const key = crypto
+    .createHash('sha256')
+    .update('booking-session:' + password)
+    .digest();
+  const mac = crypto
+    .createHmac('sha256', key)
+    .update(String(expiry))
+    .digest('base64url');
+  return `${expiry}.${mac}`;
+}
+
+test('veljaven žeton iz prijave odpre admin pot', async () => {
+  const r = await j('/api/admin/me', { headers: authHeaders() });
+  assert.equal(r.status, 200);
 });
 
-test('CORS: dovoljen origin dobi Access-Control-Allow-Origin', async () => {
-  const res = await fetch(base + '/api/services', {
-    headers: { Origin: ALLOWED_ORIGIN },
-  });
-  assert.equal(res.status, 200);
-  assert.equal(res.headers.get('access-control-allow-origin'), ALLOWED_ORIGIN);
-});
+test('ponarejen, potekel in tuj žeton so zavrnjeni', async () => {
+  const future = Date.now() + 3600000;
+  const forged = [
+    'zlonameren',
+    `${future}.${'A'.repeat(43)}`,
+    // veljaven podpis, a potekel
+    signToken(Date.now() - 1000),
+    // podpisan z drugim geslom
+    signToken(future, 'drugo-geslo'),
+    // podaljšan potek ob starem podpisu
+    token.replace(/^\d+/, String(future + 1000)),
+  ];
+  for (const t of forged) {
+    const r = await j('/api/admin/me', {
+      headers: { Authorization: 'Bearer ' + t },
+    });
+    assert.equal(r.status, 401, t);
+  }
 
-test('CORS: nedovoljen origin ne dobi dovoljenja zanj', async () => {
-  const res = await fetch(base + '/api/services', {
-    headers: { Origin: 'https://zlonamerni.example' },
+  const valid = await j('/api/admin/me', {
+    headers: { Authorization: 'Bearer ' + signToken(future) },
   });
-  assert.equal(res.status, 200); // javni API še vedno deluje
-  assert.notEqual(
-    res.headers.get('access-control-allow-origin'),
-    'https://zlonamerni.example'
-  );
+  assert.equal(valid.status, 200);
 });

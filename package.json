@@ -6,13 +6,17 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-    "start": "node --experimental-sqlite --disable-warning=ExperimentalWarning server.js",
-    "test": "node --experimental-sqlite --disable-warning=ExperimentalWarning --test"
+    "start": "node server.js",
+    "test": "PGLITE_DIR=memory:// node --test --test-force-exit"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": "24.x"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.17"
   }
 }

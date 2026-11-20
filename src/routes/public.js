@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { db, addMinutes } = require('../db');
+const { query, transaction, addMinutes } = require('../db');
 const {
   isValidEmail,
   isValidDate,
@@ -15,15 +15,13 @@ const {
 const router = express.Router();
 
 // Aktivne storitve (z opisom in sliko).
-router.get('/services', (req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT id, name, duration_min, price_eur, description, image
-       FROM services
-       WHERE active = 1
-       ORDER BY name`
-    )
-    .all();
+router.get('/services', async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, name, duration_min, price_eur, description, image
+     FROM services
+     WHERE active = 1
+     ORDER BY name`
+  );
   res.json(rows);
 });
 
@@ -37,27 +35,25 @@ function nowMinutes() {
  * Zaporedno razreže razpoložljiva okna na proste termine za izbrano storitev.
  * Vrne urejen seznam po (date, start_time).
  */
-function computeSlots(service) {
+async function computeSlots(service) {
   const today = todayStr();
   const nowMin = nowMinutes();
   const d = service.duration_min;
 
-  const windows = db
-    .prepare(
-      `SELECT date, start_time, end_time
-       FROM availability
-       WHERE date >= ?
-       ORDER BY date, start_time`
-    )
-    .all(today);
+  const { rows: windows } = await query(
+    `SELECT date, start_time, end_time
+     FROM availability
+     WHERE date >= $1
+     ORDER BY date, start_time`,
+    [today]
+  );
 
-  const bookingRows = db
-    .prepare(
-      `SELECT date, start_time, end_time
-       FROM bookings
-       WHERE date >= ?`
-    )
-    .all(today);
+  const { rows: bookingRows } = await query(
+    `SELECT date, start_time, end_time
+     FROM bookings
+     WHERE date >= $1`,
+    [today]
+  );
 
   const bookingsByDate = new Map();
   for (const b of bookingRows) {
@@ -100,22 +96,22 @@ function computeSlots(service) {
 }
 
 // Prosti termini za izbrano storitev (od danes naprej).
-router.get('/slots', (req, res) => {
+router.get('/slots', async (req, res) => {
   const serviceId = Number(req.query.service_id);
   if (!Number.isInteger(serviceId) || serviceId <= 0) {
     return res.status(400).json({ error: 'Izberite storitev.' });
   }
-  const service = db
-    .prepare('SELECT * FROM services WHERE id = ? AND active = 1')
-    .get(serviceId);
+  const {
+    rows: [service],
+  } = await query('SELECT * FROM services WHERE id = $1 AND active = 1', [serviceId]);
   if (!service) {
     return res.status(404).json({ error: 'Storitev ne obstaja.' });
   }
-  res.json(computeSlots(service));
+  res.json(await computeSlots(service));
 });
 
 // Rezervacija termina.
-router.post('/bookings', (req, res) => {
+router.post('/bookings', async (req, res) => {
   const body = req.body || {};
   const serviceId = Number(body.service_id);
   const date = cleanStr(body.date, 10);
@@ -146,9 +142,9 @@ router.post('/bookings', (req, res) => {
     return res.status(409).json({ error: 'Ta termin je že pretekel.' });
   }
 
-  const service = db
-    .prepare('SELECT * FROM services WHERE id = ? AND active = 1')
-    .get(serviceId);
+  const {
+    rows: [service],
+  } = await query('SELECT * FROM services WHERE id = $1 AND active = 1', [serviceId]);
   if (!service) {
     return res.status(404).json({ error: 'Storitev ne obstaja.' });
   }
@@ -156,23 +152,20 @@ router.post('/bookings', (req, res) => {
   const d = service.duration_min;
   const candStart = toMin(startTime);
   const endTime = addMinutes(startTime, d);
-  const candEnd = candStart + d;
 
-  try {
-    db.exec('BEGIN IMMEDIATE');
+  const conflict = await transaction(async (tx) => {
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext('booking:' || $1::text))", [date]);
 
     // 1) Termin mora ležati znotraj enega razpoložljivega okna.
-    const win = db
-      .prepare(
-        `SELECT start_time, end_time FROM availability
-         WHERE date = ? AND start_time <= ? AND end_time >= ?
-         ORDER BY start_time LIMIT 1`
-      )
-      .get(date, startTime, endTime);
-    if (!win) {
-      db.exec('ROLLBACK');
-      return res.status(409).json({ error: 'Ta termin ni več na voljo.' });
-    }
+    const {
+      rows: [win],
+    } = await tx.query(
+      `SELECT start_time, end_time FROM availability
+       WHERE date = $1 AND start_time <= $2 AND end_time >= $3
+       ORDER BY start_time LIMIT 1`,
+      [date, startTime, endTime]
+    );
+    if (!win) return 'Ta termin ni več na voljo.';
 
     // 2) Začetek mora biti poravnan na zaporedno mrežo okna.
     let s = toMin(win.start_time);
@@ -185,43 +178,27 @@ router.post('/bookings', (req, res) => {
       }
       s += d;
     }
-    if (!aligned) {
-      db.exec('ROLLBACK');
-      return res.status(409).json({ error: 'Ta termin ni več na voljo.' });
-    }
+    if (!aligned) return 'Ta termin ni več na voljo.';
 
     // 3) Termin se ne sme prekrivati z obstoječo rezervacijo.
-    const clash = db
-      .prepare(
-        `SELECT 1 FROM bookings
-         WHERE date = ? AND start_time < ? AND end_time > ?
-         LIMIT 1`
-      )
-      .get(date, endTime, startTime);
-    if (clash) {
-      db.exec('ROLLBACK');
-      return res
-        .status(409)
-        .json({ error: 'Ta termin je žal že zaseden.' });
-    }
+    const clash = await tx.query(
+      `SELECT 1 FROM bookings
+       WHERE date = $1 AND start_time < $2 AND end_time > $3
+       LIMIT 1`,
+      [date, endTime, startTime]
+    );
+    if (clash.rowCount > 0) return 'Ta termin je žal že zaseden.';
 
-    db.prepare(
+    await tx.query(
       `INSERT INTO bookings
          (service_id, date, start_time, end_time,
           customer_name, customer_phone, customer_email, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(serviceId, date, startTime, endTime, name, phone, email, note || null);
-
-    db.exec('COMMIT');
-  } catch (err) {
-    try {
-      db.exec('ROLLBACK');
-    } catch {
-      /* ignore */
-    }
-    console.error('Napaka pri rezervaciji:', err);
-    return res.status(500).json({ error: 'Prišlo je do napake. Poskusite znova.' });
-  }
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [serviceId, date, startTime, endTime, name, phone, email, note || null]
+    );
+    return null;
+  });
+  if (conflict) return res.status(409).json({ error: conflict });
 
   res.status(201).json({ ok: true, message: 'Rezervacija je potrjena.' });
 });

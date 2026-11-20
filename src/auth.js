@@ -13,8 +13,20 @@ if (ADMIN_PASSWORD === 'Marjetka123') {
   );
 }
 
-// token -> potek (ms epoch). Seja je v pomnilniku; ob restartu se admin znova prijavi.
-const sessions = new Map();
+// Seja je brez stanja (strežnik na Vercelu nima skupnega pomnilnika):
+// žeton = "<potek v ms>.<HMAC>". Ključ izhaja iz gesla, zato sprememba
+// gesla razveljavi vse žetone.
+const SESSION_KEY = crypto
+  .createHash('sha256')
+  .update('booking-session:' + ADMIN_PASSWORD)
+  .digest();
+
+function sign(expiry) {
+  return crypto
+    .createHmac('sha256', SESSION_KEY)
+    .update(String(expiry))
+    .digest('base64url');
+}
 
 function timingSafeEqual(a, b) {
   const ba = Buffer.from(String(a));
@@ -28,20 +40,16 @@ function verifyPassword(password) {
 }
 
 function createSession() {
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, Date.now() + SESSION_TTL_MS);
-  return token;
+  const expiry = Date.now() + SESSION_TTL_MS;
+  return `${expiry}.${sign(expiry)}`;
 }
 
 function isValidToken(token) {
-  if (!token) return false;
-  const expiry = sessions.get(token);
-  if (!expiry) return false;
-  if (Date.now() > expiry) {
-    sessions.delete(token);
-    return false;
-  }
-  return true;
+  if (typeof token !== 'string') return false;
+  const [expiry, mac, ...rest] = token.split('.');
+  if (!expiry || !mac || rest.length > 0 || !/^\d+$/.test(expiry)) return false;
+  if (!timingSafeEqual(mac, sign(expiry))) return false;
+  return Date.now() <= Number(expiry);
 }
 
 function requireAdmin(req, res, next) {
