@@ -2,148 +2,43 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const { DatabaseSync } = require('node:sqlite');
-const { todayStr } = require('./validate');
 
-const DB_PATH = process.env.DB_PATH
-  ? path.resolve(process.env.DB_PATH)
-  : path.join(__dirname, '..', 'data', 'booking.db');
+const SCHEMA_LOCK = 7284551;
 
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-
-const db = new DatabaseSync(DB_PATH);
-
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA foreign_keys = ON;');
-
-// Ciljna shema (varno tudi na prazni bazi).
-db.exec(`
-  CREATE TABLE IF NOT EXISTS services (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT    NOT NULL,
-    duration_min INTEGER NOT NULL,
-    price_eur    REAL    NOT NULL,
-    description  TEXT    NOT NULL DEFAULT '',
-    image        TEXT    NOT NULL DEFAULT '',
-    active       INTEGER NOT NULL DEFAULT 1,
-    created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS availability (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    date       TEXT    NOT NULL,
-    start_time TEXT    NOT NULL,
-    end_time   TEXT    NOT NULL,
-    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS services (
+    id           serial PRIMARY KEY,
+    name         text             NOT NULL,
+    duration_min integer          NOT NULL,
+    price_eur    double precision NOT NULL,
+    description  text             NOT NULL DEFAULT '',
+    image        text             NOT NULL DEFAULT '',
+    active       integer          NOT NULL DEFAULT 1,
+    created_at   text             NOT NULL DEFAULT to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+  )`,
+  `CREATE TABLE IF NOT EXISTS availability (
+    id         serial PRIMARY KEY,
+    date       text NOT NULL,
+    start_time text NOT NULL,
+    end_time   text NOT NULL,
+    created_at text NOT NULL DEFAULT to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
     UNIQUE (date, start_time, end_time)
-  );
-  CREATE INDEX IF NOT EXISTS idx_avail_date ON availability(date);
-`);
-
-function tableExists(name) {
-  return !!db
-    .prepare(
-      `SELECT name FROM sqlite_master WHERE type='table' AND name=?`
-    )
-    .get(name);
-}
-
-function columnNames(table) {
-  return db
-    .prepare(`PRAGMA table_info(${table})`)
-    .all()
-    .map((r) => r.name);
-}
-
-// ---- Idempotentna migracija (teče ob vsakem zagonu) ----
-try {
-  db.exec('BEGIN');
-
-  // 1) Manjkajoča stolpca na obstoječi (stari) tabeli services.
-  const svcCols = columnNames('services');
-  if (!svcCols.includes('description')) {
-    db.exec(`ALTER TABLE services ADD COLUMN description TEXT NOT NULL DEFAULT ''`);
-  }
-  if (!svcCols.includes('image')) {
-    db.exec(`ALTER TABLE services ADD COLUMN image TEXT NOT NULL DEFAULT ''`);
-  }
-
-  // 2) Preoblikovanje bookings (slot_id -> samostojni termin).
-  const bookingsCols = tableExists('bookings') ? columnNames('bookings') : null;
-  const needsBookingsReshape =
-    bookingsCols && bookingsCols.includes('slot_id');
-
-  if (!tableExists('bookings')) {
-    db.exec(`
-      CREATE TABLE bookings (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        service_id     INTEGER NOT NULL REFERENCES services(id),
-        date           TEXT    NOT NULL,
-        start_time     TEXT    NOT NULL,
-        end_time       TEXT    NOT NULL,
-        customer_name  TEXT    NOT NULL,
-        customer_phone TEXT    NOT NULL,
-        customer_email TEXT    NOT NULL,
-        note           TEXT,
-        created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
-  } else if (needsBookingsReshape) {
-    db.exec(`
-      CREATE TABLE bookings_new (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        service_id     INTEGER NOT NULL REFERENCES services(id),
-        date           TEXT    NOT NULL,
-        start_time     TEXT    NOT NULL,
-        end_time       TEXT    NOT NULL,
-        customer_name  TEXT    NOT NULL,
-        customer_phone TEXT    NOT NULL,
-        customer_email TEXT    NOT NULL,
-        note           TEXT,
-        created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
-    if (tableExists('slots')) {
-      db.exec(`
-        INSERT INTO bookings_new
-          (service_id, date, start_time, end_time,
-           customer_name, customer_phone, customer_email, note, created_at)
-        SELECT sl.service_id, sl.date, sl.start_time, sl.end_time,
-               b.customer_name, b.customer_phone, b.customer_email,
-               b.note, b.created_at
-        FROM bookings b
-        JOIN slots sl ON sl.id = b.slot_id
-        JOIN services srv ON srv.id = sl.service_id;
-      `);
-    }
-    db.exec('DROP TABLE bookings;');
-    db.exec('ALTER TABLE bookings_new RENAME TO bookings;');
-  }
-  db.exec('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date);');
-
-  // 3) Stare proste slote pretvori v razpoložljiva okna.
-  if (tableExists('slots')) {
-    db.prepare(
-      `INSERT OR IGNORE INTO availability (date, start_time, end_time)
-       SELECT DISTINCT date, start_time, end_time
-       FROM slots
-       WHERE status = 'free' AND date >= ?`
-    ).run(todayStr());
-  }
-
-  // 4) Odstrani staro tabelo slots.
-  db.exec('DROP TABLE IF EXISTS slots;');
-  db.exec('DROP INDEX IF EXISTS idx_slots_status_date;');
-
-  db.exec('COMMIT');
-} catch (err) {
-  try {
-    db.exec('ROLLBACK');
-  } catch {
-    /* ignore */
-  }
-  console.error('Napaka pri migraciji baze:', err);
-}
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_avail_date ON availability(date)`,
+  `CREATE TABLE IF NOT EXISTS bookings (
+    id             serial PRIMARY KEY,
+    service_id     integer NOT NULL REFERENCES services(id),
+    date           text    NOT NULL,
+    start_time     text    NOT NULL,
+    end_time       text    NOT NULL,
+    customer_name  text    NOT NULL,
+    customer_phone text    NOT NULL,
+    customer_email text    NOT NULL,
+    note           text,
+    created_at     text    NOT NULL DEFAULT to_char(now() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)`,
+];
 
 // Privzeti opisi in slike za 8 znanih storitev (vsebina iz services-info.js).
 const SERVICE_SEED = {
@@ -189,35 +84,82 @@ const SERVICE_SEED = {
   },
 };
 
-// Seed privzetih storitev ob prvem zagonu (samo če je tabela prazna).
-const serviceCount = db.prepare('SELECT COUNT(*) AS c FROM services').get().c;
-if (serviceCount === 0) {
-  const insert = db.prepare(
-    `INSERT INTO services (name, duration_min, price_eur, description, image)
-     VALUES (?, ?, ?, ?, ?)`
-  );
-  const seed = (name, dur, price) => {
-    const extra = SERVICE_SEED[name] || { description: '', image: '' };
-    insert.run(name, dur, price, extra.description, extra.image);
-  };
-  seed('BIAB', 90, 30);
-  seed('Francoska manikura / Baby boomer', 90, 30);
-  seed('BIAB + barva', 90, 30);
-  seed('Nega naravnih nohtov', 30, 30);
-  seed('Nega naravnih nohtov z lakiranjem', 60, 30);
-  seed('Podaljševanje nohtov', 120, 30);
-  seed('Urejanje nohtov na nogah / lakiranje', 120, 30);
-  seed('BIAB + poslikava / dizajn', 105, 30);
-} else {
-  // Obstoječa baza: zapolni le prazne opise/slike (urejanj ne povozi).
-  const fill = db.prepare(
-    `UPDATE services SET description = ?, image = ?
-     WHERE name = ? AND (description = '' OR description IS NULL)`
-  );
-  for (const [name, v] of Object.entries(SERVICE_SEED)) {
-    fill.run(v.description, v.image, name);
+const SERVICE_DEFAULTS = [
+  ['BIAB', 90, 30],
+  ['Francoska manikura / Baby boomer', 90, 30],
+  ['BIAB + barva', 90, 30],
+  ['Nega naravnih nohtov', 30, 30],
+  ['Nega naravnih nohtov z lakiranjem', 60, 30],
+  ['Podaljševanje nohtov', 120, 30],
+  ['Urejanje nohtov na nogah / lakiranje', 120, 30],
+  ['BIAB + poslikava / dizajn', 105, 30],
+];
+
+function createBackend() {
+  if (process.env.DATABASE_URL) {
+    const { Pool } = require('pg');
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 3,
+      idleTimeoutMillis: 10000,
+    });
+    return {
+      query: (text, params) => pool.query(text, params),
+      async transaction(fn) {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const result = await fn({ query: (t, p) => client.query(t, p) });
+          await client.query('COMMIT');
+          return result;
+        } catch (err) {
+          await client.query('ROLLBACK').catch(() => {});
+          throw err;
+        } finally {
+          client.release();
+        }
+      },
+    };
   }
+
+  const { PGlite } = require('@electric-sql/pglite');
+  const dir = process.env.PGLITE_DIR || path.join(__dirname, '..', 'data', 'pglite');
+  if (!dir.startsWith('memory://')) fs.mkdirSync(dir, { recursive: true });
+  const lite = new PGlite(dir);
+  const shape = (r) => ({ rows: r.rows, rowCount: r.affectedRows ?? r.rows.length });
+  return {
+    async query(text, params) {
+      return shape(await lite.query(text, params));
+    },
+    transaction: (fn) =>
+      lite.transaction((t) =>
+        fn({ query: async (text, params) => shape(await t.query(text, params)) })
+      ),
+  };
 }
+
+const { query, transaction } = createBackend();
+
+async function init() {
+  await transaction(async (tx) => {
+    await tx.query('SELECT pg_advisory_xact_lock($1)', [SCHEMA_LOCK]);
+    for (const ddl of SCHEMA) await tx.query(ddl);
+
+    const { rows } = await tx.query('SELECT COUNT(*)::int AS c FROM services');
+    if (rows[0].c !== 0) return;
+    for (const [name, dur, price] of SERVICE_DEFAULTS) {
+      const extra = SERVICE_SEED[name];
+      await tx.query(
+        `INSERT INTO services (name, duration_min, price_eur, description, image)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [name, dur, price, extra.description, extra.image]
+      );
+    }
+  });
+}
+
+const ready = init();
+ready.catch(() => {});
 
 /** Doda trajanje (minute) uri "HH:MM" in vrne "HH:MM" (omejeno na isti dan). */
 function addMinutes(hhmm, minutes) {
@@ -229,4 +171,4 @@ function addMinutes(hhmm, minutes) {
   return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
 }
 
-module.exports = { db, addMinutes, DB_PATH };
+module.exports = { query, transaction, ready, addMinutes };
