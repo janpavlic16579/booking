@@ -152,7 +152,6 @@ router.post('/bookings', async (req, res) => {
   const d = service.duration_min;
   const candStart = toMin(startTime);
   const endTime = addMinutes(startTime, d);
-  const candEnd = candStart + d;
 
   const conflict = await transaction(async (tx) => {
     await tx.query("SELECT pg_advisory_xact_lock(hashtext('booking:' || $1::text))", [date]);

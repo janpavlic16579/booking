@@ -126,7 +126,11 @@ function createBackend() {
   const dir = process.env.PGLITE_DIR || path.join(__dirname, '..', 'data', 'pglite');
   if (!dir.startsWith('memory://')) fs.mkdirSync(dir, { recursive: true });
   const lite = new PGlite(dir);
-  const shape = (r) => ({ rows: r.rows, rowCount: r.affectedRows ?? r.rows.length });
+  // Kot pg: poizvedba s stolpci šteje vrstice, zapis brez RETURNING pa spremenjene.
+  const shape = (r) => ({
+    rows: r.rows,
+    rowCount: r.fields.length > 0 ? r.rows.length : (r.affectedRows ?? 0),
+  });
   return {
     async query(text, params) {
       return shape(await lite.query(text, params));
@@ -158,8 +162,15 @@ async function init() {
   });
 }
 
-const ready = init();
-ready.catch(() => {});
+// Ob neuspehu (npr. Neon se še zbuja) naslednja zahteva poskusi znova.
+let initPromise = null;
+function ready() {
+  initPromise ??= init().catch((err) => {
+    initPromise = null;
+    throw err;
+  });
+  return initPromise;
+}
 
 /** Doda trajanje (minute) uri "HH:MM" in vrne "HH:MM" (omejeno na isti dan). */
 function addMinutes(hhmm, minutes) {
