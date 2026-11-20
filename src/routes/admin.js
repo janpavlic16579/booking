@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { db } = require('../db');
+const { query, transaction } = require('../db');
 const { verifyPassword, createSession, requireAdmin } = require('../auth');
 const {
   isValidDate,
@@ -34,18 +34,16 @@ function validImage(image) {
   return image === '' || isValidHttpUrl(image);
 }
 
-router.get('/services', (req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT id, name, duration_min, price_eur, description, image,
-              active, created_at
-       FROM services ORDER BY active DESC, name`
-    )
-    .all();
+router.get('/services', async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, name, duration_min, price_eur, description, image,
+            active, created_at
+     FROM services ORDER BY active DESC, name`
+  );
   res.json(rows);
 });
 
-router.post('/services', (req, res) => {
+router.post('/services', async (req, res) => {
   const body = req.body || {};
   const name = cleanStr(body.name, 120);
   const duration = Number(body.duration_min);
@@ -66,22 +64,24 @@ router.post('/services', (req, res) => {
     return res.status(400).json({ error: 'Neveljaven URL slike.' });
   }
 
-  const info = db
-    .prepare(
-      `INSERT INTO services (name, duration_min, price_eur, description, image)
-       VALUES (?, ?, ?, ?, ?)`
-    )
-    .run(name, duration, Math.round(price * 100) / 100, description, image);
+  const { rows } = await query(
+    `INSERT INTO services (name, duration_min, price_eur, description, image)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    [name, duration, Math.round(price * 100) / 100, description, image]
+  );
 
-  res.status(201).json({ id: Number(info.lastInsertRowid) });
+  res.status(201).json({ id: rows[0].id });
 });
 
-router.patch('/services/:id', (req, res) => {
+router.patch('/services/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Neveljaven ID.' });
   }
-  const existing = db.prepare('SELECT * FROM services WHERE id = ?').get(id);
+  const {
+    rows: [existing],
+  } = await query('SELECT * FROM services WHERE id = $1', [id]);
   if (!existing) {
     return res.status(404).json({ error: 'Storitev ne obstaja.' });
   }
@@ -117,71 +117,69 @@ router.patch('/services/:id', (req, res) => {
     return res.status(400).json({ error: 'Neveljaven URL slike.' });
   }
 
-  db.prepare(
+  await query(
     `UPDATE services
-     SET name = ?, duration_min = ?, price_eur = ?,
-         description = ?, image = ?, active = ?
-     WHERE id = ?`
-  ).run(
-    name,
-    duration,
-    Math.round(price * 100) / 100,
-    description,
-    image,
-    active,
-    id
+     SET name = $1, duration_min = $2, price_eur = $3,
+         description = $4, image = $5, active = $6
+     WHERE id = $7`,
+    [name, duration, Math.round(price * 100) / 100, description, image, active, id]
   );
 
   res.json({ ok: true });
 });
 
-router.delete('/services/:id', (req, res) => {
+router.delete('/services/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Neveljaven ID.' });
   }
-  const used = db
-    .prepare('SELECT COUNT(*) AS c FROM bookings WHERE service_id = ?')
-    .get(id).c;
-
-  if (used > 0) {
-    // Storitev ima rezervacije — je ne brišemo, le deaktiviramo.
-    db.prepare('UPDATE services SET active = 0 WHERE id = ?').run(id);
-    return res.json({ ok: true, deactivated: true });
-  }
-  db.prepare('DELETE FROM services WHERE id = ?').run(id);
-  res.json({ ok: true, deleted: true });
+  // Zaklep vrstice storitve prepreči, da bi se med štetjem in brisanjem
+  // pojavila nova rezervacija (njen tuji ključ bi ob brisanju padel).
+  const result = await transaction(async (tx) => {
+    await tx.query('SELECT id FROM services WHERE id = $1 FOR UPDATE', [id]);
+    const { rows } = await tx.query(
+      'SELECT COUNT(*)::int AS c FROM bookings WHERE service_id = $1',
+      [id]
+    );
+    if (rows[0].c > 0) {
+      // Storitev ima rezervacije — je ne brišemo, le deaktiviramo.
+      await tx.query('UPDATE services SET active = 0 WHERE id = $1', [id]);
+      return { ok: true, deactivated: true };
+    }
+    await tx.query('DELETE FROM services WHERE id = $1', [id]);
+    return { ok: true, deleted: true };
+  });
+  res.json(result);
 });
 
 /* ---------- Razpoložljivost (delovna okna) ---------- */
 
-function rangeWhere(from, to) {
+function rangeWhere(from, to, column = 'date') {
   const cond = [];
   const args = [];
   if (isValidDate(from)) {
-    cond.push('date >= ?');
     args.push(from);
+    cond.push(`${column} >= $${args.length}`);
   }
   if (isValidDate(to)) {
-    cond.push('date <= ?');
     args.push(to);
+    cond.push(`${column} <= $${args.length}`);
   }
   return { sql: cond.length ? 'WHERE ' + cond.join(' AND ') : '', args };
 }
 
-router.get('/availability', (req, res) => {
+router.get('/availability', async (req, res) => {
   const { sql, args } = rangeWhere(req.query.from, req.query.to);
-  const rows = db
-    .prepare(
-      `SELECT id, date, start_time, end_time
-       FROM availability ${sql}
-       ORDER BY date, start_time`
-    )
-    .all(...args);
+  const { rows } = await query(
+    `SELECT id, date, start_time, end_time
+     FROM availability ${sql}
+     ORDER BY date, start_time`,
+    args
+  );
   res.json(rows);
 });
 
-router.post('/availability', (req, res) => {
+router.post('/availability', async (req, res) => {
   const body = req.body || {};
   const date = cleanStr(body.date, 10);
   const start = cleanStr(body.start_time, 5);
@@ -203,20 +201,20 @@ router.post('/availability', (req, res) => {
   }
 
   try {
-    const info = db
-      .prepare(
-        `INSERT INTO availability (date, start_time, end_time)
-         VALUES (?, ?, ?)`
-      )
-      .run(date, start, end);
+    const { rows } = await query(
+      `INSERT INTO availability (date, start_time, end_time)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [date, start, end]
+    );
     res.status(201).json({
-      id: Number(info.lastInsertRowid),
+      id: rows[0].id,
       date,
       start_time: start,
       end_time: end,
     });
   } catch (err) {
-    if (String(err.message || '').includes('UNIQUE')) {
+    if (err.code === '23505') {
       return res.status(409).json({ error: 'To okno že obstaja.' });
     }
     console.error('Napaka pri ustvarjanju okna:', err);
@@ -224,14 +222,17 @@ router.post('/availability', (req, res) => {
   }
 });
 
-router.patch('/availability/:id', (req, res) => {
+router.patch('/availability/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Neveljaven ID.' });
   }
-  const row = db
-    .prepare('SELECT id, date, start_time, end_time FROM availability WHERE id = ?')
-    .get(id);
+  const {
+    rows: [row],
+  } = await query(
+    'SELECT id, date, start_time, end_time FROM availability WHERE id = $1',
+    [id]
+  );
   if (!row) {
     return res.status(404).json({ error: 'Okno ne obstaja.' });
   }
@@ -255,12 +256,13 @@ router.patch('/availability/:id', (req, res) => {
   }
 
   try {
-    db.prepare(
-      `UPDATE availability SET start_time = ?, end_time = ? WHERE id = ?`
-    ).run(start, end, id);
+    await query(
+      'UPDATE availability SET start_time = $1, end_time = $2 WHERE id = $3',
+      [start, end, id]
+    );
     res.json({ ok: true, id, date: row.date, start_time: start, end_time: end });
   } catch (err) {
-    if (String(err.message || '').includes('UNIQUE')) {
+    if (err.code === '23505') {
       return res.status(409).json({ error: 'To okno že obstaja.' });
     }
     console.error('Napaka pri urejanju okna:', err);
@@ -268,62 +270,57 @@ router.patch('/availability/:id', (req, res) => {
   }
 });
 
-router.delete('/availability/:id', (req, res) => {
+router.delete('/availability/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: 'Neveljaven ID.' });
   }
-  const row = db.prepare('SELECT id FROM availability WHERE id = ?').get(id);
-  if (!row) {
+  const { rowCount } = await query('DELETE FROM availability WHERE id = $1', [id]);
+  if (rowCount === 0) {
     return res.status(404).json({ error: 'Okno ne obstaja.' });
   }
-  db.prepare('DELETE FROM availability WHERE id = ?').run(id);
   res.json({ ok: true });
 });
 
 /* ---------- Koledar (razpoložljivost + rezervacije) ---------- */
 
-router.get('/calendar', (req, res) => {
+router.get('/calendar', async (req, res) => {
   const { sql, args } = rangeWhere(req.query.from, req.query.to);
-  const availability = db
-    .prepare(
-      `SELECT id, date, start_time, end_time
-       FROM availability ${sql}
-       ORDER BY date, start_time`
-    )
-    .all(...args);
+  const { rows: availability } = await query(
+    `SELECT id, date, start_time, end_time
+     FROM availability ${sql}
+     ORDER BY date, start_time`,
+    args
+  );
 
-  const bSql = sql.replace(/\bdate\b/g, 'b.date');
-  const bookings = db
-    .prepare(
-      `SELECT b.id, b.service_id, srv.name AS service_name,
-              b.date, b.start_time, b.end_time,
-              b.customer_name, b.customer_phone, b.customer_email,
-              b.note, b.created_at
-       FROM bookings b
-       JOIN services srv ON srv.id = b.service_id
-       ${bSql}
-       ORDER BY b.date, b.start_time`
-    )
-    .all(...args);
+  const b = rangeWhere(req.query.from, req.query.to, 'b.date');
+  const { rows: bookings } = await query(
+    `SELECT b.id, b.service_id, srv.name AS service_name,
+            b.date, b.start_time, b.end_time,
+            b.customer_name, b.customer_phone, b.customer_email,
+            b.note, b.created_at
+     FROM bookings b
+     JOIN services srv ON srv.id = b.service_id
+     ${b.sql}
+     ORDER BY b.date, b.start_time`,
+    b.args
+  );
 
   res.json({ availability, bookings });
 });
 
 /* ---------- Rezervacije ---------- */
 
-router.get('/bookings', (req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT b.id, b.customer_name, b.customer_phone, b.customer_email,
-              b.note, b.created_at,
-              b.date, b.start_time, b.end_time,
-              srv.name AS service_name, srv.price_eur
-       FROM bookings b
-       JOIN services srv ON srv.id = b.service_id
-       ORDER BY b.date DESC, b.start_time`
-    )
-    .all();
+router.get('/bookings', async (req, res) => {
+  const { rows } = await query(
+    `SELECT b.id, b.customer_name, b.customer_phone, b.customer_email,
+            b.note, b.created_at,
+            b.date, b.start_time, b.end_time,
+            srv.name AS service_name, srv.price_eur
+     FROM bookings b
+     JOIN services srv ON srv.id = b.service_id
+     ORDER BY b.date DESC, b.start_time`
+  );
   res.json(rows);
 });
 
